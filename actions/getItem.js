@@ -1,7 +1,10 @@
-var db = require('../db')
+var db = require('../db'),
+    logger = require('../logger')
 
 module.exports = function getItem(store, data, cb) {
-
+  if (logger.getInstance())
+    logger.getInstance().trace({exData: data}, "Getting item - " + data.TableName)
+  
   store.getTable(data.TableName, function(err, table) {
     if (err) return cb(err)
 
@@ -36,4 +39,3 @@ module.exports = function getItem(store, data, cb) {
     })
   })
 }
-

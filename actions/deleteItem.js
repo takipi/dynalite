@@ -1,6 +1,9 @@
-var db = require('../db')
+var db = require('../db'),
+    logger = require('../logger')
 
 module.exports = function deleteItem(store, data, cb) {
+  if (logger.getInstance())
+    logger.getInstance().trace({exData: data}, "Delete item from - " + data.TableName)
 
   store.getTable(data.TableName, function(err, table) {
     if (err) return cb(err)
@@ -37,4 +40,3 @@ module.exports = function deleteItem(store, data, cb) {
     })
   })
 }
-
