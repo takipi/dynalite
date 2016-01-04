@@ -17,6 +17,8 @@ if (argv.help) {
     '--createTableMs <ms>  Amount of time tables stay in CREATING state (default: 500)',
     '--deleteTableMs <ms>  Amount of time tables stay in DELETING state (default: 500)',
     '--updateTableMs <ms>  Amount of time tables stay in UPDATING state (default: 500)',
+    '--verbose <level>     Write logs (TRACE/DEBUG/INFO/WARN/ERROR/FATAL, default off)',
+    '--sVerbose <level>    Steroid Verbose, Write logs with extra data (Same level options)',
     '',
     'Report bugs at github.com/mhart/dynalite/issues',
   ].join('\n'))

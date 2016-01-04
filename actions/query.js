@@ -1,9 +1,13 @@
 var events = require('events'),
     once = require('once'),
     Lazy = require('lazy'),
-    db = require('../db')
+    db = require('../db'),
+    logger = require('../logger')
 
 module.exports = function query(store, data, cb) {
+  if (logger.getInstance())
+    logger.getInstance().trace({exData: data}, "Querying table - " + data.TableName)
+  
   cb = once(cb)
 
   store.getTable(data.TableName, function(err, table) {
@@ -221,4 +225,3 @@ module.exports = function query(store, data, cb) {
     })
   })
 }
-

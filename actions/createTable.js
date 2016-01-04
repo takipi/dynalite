@@ -1,14 +1,20 @@
+var logger = require('../logger')
 
 module.exports = function createTable(store, data, cb) {
-
+  if (logger.getInstance())
+    logger.getInstance().trace({exData: data}, "Creating table  - " + data.TableName)
+  
   var key = data.TableName, tableDb = store.tableDb
-
-  tableDb.lock(key, function(release) {
+  
+  tableDb.lock(key, function (release)
+  {
     cb = release(cb)
-
-    tableDb.get(key, function(err) {
+    
+    tableDb.get(key, function (err)
+    {
       if (err && err.name != 'NotFoundError') return cb(err)
-      if (!err) {
+      if (!err)
+      {
         err = new Error
         err.statusCode = 400
         err.body = {
@@ -17,56 +23,63 @@ module.exports = function createTable(store, data, cb) {
         }
         return cb(err)
       }
-
+      
       data.TableArn = 'arn:aws:dynamodb:' + tableDb.awsRegion + ':' + tableDb.awsAccountId + ':table/' + data.TableName
       data.CreationDateTime = Date.now() / 1000
       data.ItemCount = 0
       data.ProvisionedThroughput.NumberOfDecreasesToday = 0
       data.TableSizeBytes = 0
       data.TableStatus = 'CREATING'
-      if (data.LocalSecondaryIndexes) {
-        data.LocalSecondaryIndexes.forEach(function(index) {
+      if (data.LocalSecondaryIndexes)
+      {
+        data.LocalSecondaryIndexes.forEach(function (index)
+        {
           index.IndexArn = 'arn:aws:dynamodb:' + tableDb.awsRegion + ':' + tableDb.awsAccountId + ':table/' +
-            data.TableName + '/index/' + index.IndexName
+              data.TableName + '/index/' + index.IndexName
           index.IndexSizeBytes = 0
           index.ItemCount = 0
         })
       }
-      if (data.GlobalSecondaryIndexes) {
-        data.GlobalSecondaryIndexes.forEach(function(index) {
+      if (data.GlobalSecondaryIndexes)
+      {
+        data.GlobalSecondaryIndexes.forEach(function (index)
+        {
           index.IndexArn = 'arn:aws:dynamodb:' + tableDb.awsRegion + ':' + tableDb.awsAccountId + ':table/' +
-            data.TableName + '/index/' + index.IndexName
+              data.TableName + '/index/' + index.IndexName
           index.IndexSizeBytes = 0
           index.ItemCount = 0
           index.IndexStatus = 'CREATING'
           index.ProvisionedThroughput.NumberOfDecreasesToday = 0
         })
       }
-
-      tableDb.put(key, data, function(err) {
+      
+      tableDb.put(key, data, function (err)
+      {
         if (err) return cb(err)
-
-        setTimeout(function() {
-
+        
+        setTimeout(function ()
+        {
+          
           // Shouldn't need to lock/fetch as nothing should have changed
           data.TableStatus = 'ACTIVE'
-          if (data.GlobalSecondaryIndexes) {
-            data.GlobalSecondaryIndexes.forEach(function(index) {
+          if (data.GlobalSecondaryIndexes)
+          {
+            data.GlobalSecondaryIndexes.forEach(function (index)
+            {
               index.IndexStatus = 'ACTIVE'
             })
           }
-
-          tableDb.put(key, data, function(err) {
+          
+          tableDb.put(key, data, function (err)
+          {
             if (err && !/Database is not open/.test(err)) console.error(err.stack || err)
           })
-
+          
         }, store.createTableMs)
-
+        
         cb(null, {TableDescription: data})
       })
     })
   })
-
+  
 }
-
-

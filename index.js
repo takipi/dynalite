@@ -6,9 +6,11 @@ var http = require('http'),
     crypto = require('crypto'),
     crc32 = require('buffer-crc32'),
     validations = require('./validations'),
-    db = require('./db')
+    db = require('./db'),
+    bunyan = require('./logger')
 
 var MAX_REQUEST_BYTES = 16 * 1024 * 1024
+var logger;
 
 var validApis = ['DynamoDB_20111205', 'DynamoDB_20120810'],
     validOperations = ['BatchGetItem', 'BatchWriteItem', 'CreateTable', 'DeleteItem', 'DeleteTable',
@@ -21,7 +23,9 @@ module.exports = dynalite
 function dynalite(options) {
   options = options || {}
   var server, store = db.create(options), requestHandler = httpHandler.bind(null, store)
-
+  
+  logger = bunyan.createLogger("dynalite_log", __dirname, options)
+  
   if (options.ssl) {
     options.key = options.key || fs.readFileSync(path.join(__dirname, 'ssl', 'server-key.pem'))
     options.cert = options.cert || fs.readFileSync(path.join(__dirname, 'ssl', 'server-crt.pem'))
@@ -30,10 +34,12 @@ function dynalite(options) {
   } else {
     server = http.createServer(requestHandler)
   }
-
+  if (logger) logger.info("Server Created...")
+  
   // Ensure we close DB when we're closing the server too
   var httpServerClose = server.close, httpServerListen = server.listen
   server.close = function(cb) {
+    if (logger) logger.info("Shutting Down Dynalite Server...")
     store.db.close(function(err) {
       if (err) return cb(err)
       // Recreate the store if the user wants to listen again
@@ -72,6 +78,7 @@ function sendData(req, res, data, statusCode) {
   // res.setHeader('Connection', '')
   // res.shouldKeepAlive = false
   res.end(body)
+  // TODO: do we want this? -> if (logger) logger.debug({body: body}, "Sending data.")
 }
 
 function httpHandler(store, req, res) {
@@ -196,6 +203,7 @@ function httpHandler(store, req, res) {
     }
 
     if (msg) {
+      if (logger) logger.error("Incomplete Signature Exception in httpHandler()")
       return sendData(req, res, {
         __type: 'com.amazon.coral.service#IncompleteSignatureException',
         message: msg,
@@ -245,7 +253,10 @@ function httpHandler(store, req, res) {
 
     // For some reason, the serialization checks seem to be a bit out of sync
     if (!body)
+    {
+      if (logger) logger.error("Serialization Exception Occurred in httpHandler()")
       return sendData(req, res, {__type: 'com.amazon.coral.service#SerializationException'}, 400)
+    }
 
     var action = validations.toLowerFirst(target[1])
     var actionValidation = actionValidations[action]
@@ -253,12 +264,23 @@ function httpHandler(store, req, res) {
       data = validations.checkTypes(data, actionValidation.types)
       validations.checkValidations(data, actionValidation.types, actionValidation.custom)
     } catch (e) {
-      if (e.statusCode) return sendData(req, res, e.body, e.statusCode)
+      if (e.statusCode) 
+      {
+        if (logger) logger.error({exData: e.body}, "Error while validating data")
+        return sendData(req, res, e.body, e.statusCode)
+      }
       throw e
     }
 
     actions[action](store, data, function(err, data) {
-      if (err && err.statusCode) return sendData(req, res, err.body, err.statusCode)
+      if (err && logger)
+      {
+        logger.error({exData: data}, "Error while trying to perform action " + err)
+      }
+      if (err && err.statusCode)
+      {
+        return sendData(req, res, err.body, err.statusCode)
+      }
       if (err) throw err
       sendData(req, res, data)
     })

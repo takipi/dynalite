@@ -1,8 +1,11 @@
 var Big = require('big.js'),
-    db = require('../db')
+    db = require('../db'),
+    logger = require('../logger')
 
 module.exports = function updateItem(store, data, cb) {
-
+  if (logger.getInstance())
+    logger.getInstance().trace({exData: data}, "Updating item in - " + data.TableName)
+  
   store.getTable(data.TableName, function(err, table) {
     if (err) return cb(err)
 
@@ -108,4 +111,3 @@ module.exports = function updateItem(store, data, cb) {
     })
   })
 }
-

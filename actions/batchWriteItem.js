@@ -1,9 +1,13 @@
 var async = require('async'),
     putItem = require('./putItem'),
     deleteItem = require('./deleteItem'),
-    db = require('../db')
+    db = require('../db'),
+    logger = require('../logger')
 
 module.exports = function batchWriteItem(store, data, cb) {
+  if (logger.getInstance())
+    logger.getInstance().trace({exData: data}, "Batch write item - " + data.TableName)
+  
   var actions = []
 
   async.series([
@@ -72,4 +76,3 @@ module.exports = function batchWriteItem(store, data, cb) {
     })
   }
 }
-

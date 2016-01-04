@@ -1,7 +1,11 @@
 var once = require('once'),
-    db = require('../db')
+    db = require('../db'),
+    logger = require('../logger')
 
 module.exports = function scan(store, data, cb) {
+  if (logger.getInstance())
+    logger.getInstance().trace({exData: data}, "Scanning table - " + data.TableName)
+  
   cb = once(cb)
 
   store.getTable(data.TableName, function(err, table) {
