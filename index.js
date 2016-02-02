@@ -7,10 +7,12 @@ var http = require('http'),
     crc32 = require('buffer-crc32'),
     validations = require('./validations'),
     db = require('./db'),
-    bunyan = require('./logger')
+    bunyan = require('./logger'),
+    stats = require('./stats')
 
 var MAX_REQUEST_BYTES = 16 * 1024 * 1024
-var logger;
+var logger
+var statistics
 
 var validApis = ['DynamoDB_20111205', 'DynamoDB_20120810'],
     validOperations = ['BatchGetItem', 'BatchWriteItem', 'CreateTable', 'DeleteItem', 'DeleteTable',
@@ -23,9 +25,10 @@ module.exports = dynalite
 function dynalite(options) {
   options = options || {}
   var server, store = db.create(options), requestHandler = httpHandler.bind(null, store)
-  
+
   logger = bunyan.createLogger("dynalite_log", __dirname, options)
-  
+  statistics = stats.createStats()
+
   if (options.ssl) {
     options.key = options.key || fs.readFileSync(path.join(__dirname, 'ssl', 'server-key.pem'))
     options.cert = options.cert || fs.readFileSync(path.join(__dirname, 'ssl', 'server-crt.pem'))
@@ -35,7 +38,7 @@ function dynalite(options) {
     server = http.createServer(requestHandler)
   }
   if (logger) logger.info("Server Created...")
-  
+
   // Ensure we close DB when we're closing the server too
   var httpServerClose = server.close, httpServerListen = server.listen
   server.close = function(cb) {
@@ -115,6 +118,18 @@ function httpHandler(store, req, res) {
         res.setHeader('Content-Length', 0)
         req.removeAllListeners()
         return res.end()
+      }
+    }
+
+    if (req.url == "/stats") {
+      var curStats = statistics.getCounters()
+      if (curStats)
+      {
+        req.removeAllListeners()
+        res.statusCode = 200
+        res.setHeader('x-amz-crc32', 3128867991)
+        res.setHeader('Content-Length', curStats.length)
+        return res.end(curStats)
       }
     }
 
@@ -264,18 +279,24 @@ function httpHandler(store, req, res) {
       data = validations.checkTypes(data, actionValidation.types)
       validations.checkValidations(data, actionValidation.types, actionValidation.custom)
     } catch (e) {
-      if (e.statusCode) 
+      if (e.statusCode)
       {
-        if (logger) logger.error({exData: e.body}, "Error while validating data")
+        if (logger) logger.error({exData: e.body}, "Error while validating data for action: " + action)
         return sendData(req, res, e.body, e.statusCode)
       }
       throw e
     }
 
+    var tb = "allTables"
+    if (data.hasOwnProperty("TableName"))
+      tb = data.TableName
+
+    statistics.incCounter(action + "-" + tb)
+
     actions[action](store, data, function(err, data) {
       if (err && logger)
       {
-        logger.error({exData: data}, "Error while trying to perform action " + err)
+        logger.error({exData: data}, "Error while trying to perform action: " + action + " with error: " + err)
       }
       if (err && err.statusCode)
       {
@@ -288,4 +309,3 @@ function httpHandler(store, req, res) {
 }
 
 if (require.main === module) dynalite().listen(4567)
-
