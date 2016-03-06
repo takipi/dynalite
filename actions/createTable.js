@@ -1,9 +1,6 @@
 var logger = require('../logger')
 
 module.exports = function createTable(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Creating table  - " + data.TableName)
-  
   var key = data.TableName, tableDb = store.tableDb
   
   tableDb.lock(key, function (release)
