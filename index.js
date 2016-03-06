@@ -319,7 +319,7 @@ function httpHandler(store, req, res) {
 
       if (err && logger)
       {
-        logger.error({exData: data}, "Error while trying to perform action: " + action + " with error: " + err)
+        logger.error({exData: data}, "[TIMER: " + timerId + "] Error while trying to perform action: " + action + " on " + logTableName + " with error: " + err)
       }
       if (err && err.statusCode)
       {
