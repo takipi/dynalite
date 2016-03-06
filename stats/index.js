@@ -4,8 +4,8 @@ exports.createStats = createStats
 
 function createStats ()
 {
-  var counters = []
-  var lastData
+  var counters = {}
+  var lastData = null
 
   function incCounter (counterName) {
     try {
@@ -25,12 +25,10 @@ function createStats ()
     var result = parseCountersToString(counters, timestamp)
 
     if (lastData)
-      result += parseCountersToString(lastData[0].value, lastData[0].key)
+      result += parseCountersToString(lastData.value, lastData.key)
 
-    lastData = []
-    lastData.push({ key: new Date(),
-                    value: cloneCounters(counters) })
-    counters = []
+    lastData = {key: new Date(), value: cloneCounters(counters)}
+    counters = {}
 
     return result
   }
@@ -42,7 +40,7 @@ function createStats ()
 }
 
 function cloneCounters(counters) {
-  var result = []
+  var result = {}
 
   if ((counters) &&
       (Object.keys(counters).length > 0)) {
