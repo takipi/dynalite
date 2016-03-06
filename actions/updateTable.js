@@ -2,9 +2,6 @@ var db = require('../db'),
     logger = require('../logger')
 
 module.exports = function updateTable(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Updating table - " + data.TableName)
-  
   var key = data.TableName, tableDb = store.tableDb
 
   tableDb.lock(key, function(release) {

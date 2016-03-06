@@ -5,9 +5,6 @@ var events = require('events'),
     logger = require('../logger')
 
 module.exports = function query(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Querying table - " + data.TableName)
-  
   cb = once(cb)
 
   store.getTable(data.TableName, function(err, table) {

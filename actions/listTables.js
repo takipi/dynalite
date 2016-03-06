@@ -3,9 +3,6 @@ var once = require('once'),
     logger = require('../logger')
 
 module.exports = function listTables(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Listing Tables")
-  
   cb = once(cb)
   var opts, keys
 
