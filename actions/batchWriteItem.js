@@ -5,9 +5,6 @@ var async = require('async'),
     logger = require('../logger')
 
 module.exports = function batchWriteItem(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Batch write item - " + data.TableName)
-  
   var actions = []
 
   async.series([

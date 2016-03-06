@@ -1,9 +1,6 @@
 var logger = require('../logger')
 
 module.exports = function deleteTable(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Deleting table - " + data.TableName)
-
   var key = data.TableName, tableDb = store.tableDb
 
   store.getTable(key, false, function(err, table) {

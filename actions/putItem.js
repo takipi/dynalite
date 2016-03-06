@@ -2,9 +2,6 @@ var db = require('../db'),
     logger = require('../logger')
 
 module.exports = function putItem(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Putting item in - " + data.TableName)
-  
   store.getTable(data.TableName, function(err, table) {
     if (err) return cb(err)
 

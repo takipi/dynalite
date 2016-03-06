@@ -272,7 +272,29 @@ function httpHandler(store, req, res) {
       throw e
     }
 
+    var timerId = Math.floor((Math.random() * 2147483647) + 1).toString()
+    var logTableName = data.TableName
+
+    if ((!logTableName) &&
+        (data.RequestItems))
+    {
+      logTableName = Object.keys(data.RequestItems).join(", ")
+    }
+
+    var actionStartTime = new Date().getTime()
+    
+    if (logger)
+    {
+      logger.trace({}, "[TIMER: " + timerId + "] going to " + action + " on " + logTableName)
+    }
+
     actions[action](store, data, function(err, data) {
+      if (logger)
+      {
+        var actionTimeMs = new Date().getTime() - actionStartTime
+        logger.trace({}, "[TIMER: " + timerId + "] " + action + " on table " + logTableName + " took " + actionTimeMs + " ms")
+      }
+
       if (err && logger)
       {
         logger.error({exData: data}, "Error while trying to perform action " + err)
