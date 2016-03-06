@@ -283,14 +283,6 @@ function httpHandler(store, req, res) {
 
     var actionStartTime = new Date().getTime()
     
-    if (!logTableName)
-    {
-      if (logger)
-      {
-        logger.trace({}, "NO TABLE - " + JSON.stringify(data))
-      }
-    }
-
     if (logger)
     {
       logger.trace({}, "[TIMER: " + timerId + "] going to " + action + " on " + logTableName)
