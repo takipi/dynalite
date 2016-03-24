@@ -26,7 +26,7 @@ function create(options) {
   if (options.deleteTableMs == null) options.deleteTableMs = 500
   if (options.updateTableMs == null) options.updateTableMs = 500
 
-  var db = levelup(options.path || '/does/not/matter', options.path ? {} : {db: memdown}),
+  var db = levelup(options.path || '/does/not/matter', options.path ? options : {db: memdown}),
       sublevelDb = sublevel(db),
       tableDb = sublevelDb.sublevel('table', {valueEncoding: 'json'}),
       itemDbs = []
