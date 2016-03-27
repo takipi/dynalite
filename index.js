@@ -24,7 +24,7 @@ module.exports = dynalite
 
 function dynalite(options) {
   options = options || {}
-  var server, store = db.create(options), requestHandler = httpHandler.bind(null, store)
+  var server, stores = {}, requestHandler = httpHandler.bind(null, stores, options)
 
   logger = bunyan.createLogger("dynalite_log", __dirname, options)
   statistics = stats.createStats()
@@ -43,15 +43,22 @@ function dynalite(options) {
   var httpServerClose = server.close, httpServerListen = server.listen
   server.close = function(cb) {
     if (logger) logger.info("Shutting Down Dynalite Server...")
-    store.db.close(function(err) {
-      if (err) return cb(err)
-      // Recreate the store if the user wants to listen again
-      server.listen = function() {
-        store.recreate()
-        httpServerListen.apply(server, arguments)
-      }
-      httpServerClose.call(server, cb)
-    })
+      
+    for (var i = 0; i < stores.length; i++)
+    {
+      var store = stores[i];
+      
+      store.db.close(function(err) {
+        if (err) return cb(err)
+        // Recreate the store if the user wants to listen again
+        server.listen = function() {
+          store.recreate()
+          httpServerListen.apply(server, arguments)
+        }
+        httpServerClose.call(server, cb)
+      })
+      
+    }
   }
 
   return server
@@ -84,7 +91,7 @@ function sendData(req, res, data, statusCode) {
   // TODO: do we want this? -> if (logger) logger.debug({body: body}, "Sending data.")
 }
 
-function httpHandler(store, req, res) {
+function httpHandler(stores, options, req, res) {
   var body
   req.on('error', function(err) { throw err })
   req.on('data', function(data) {
@@ -310,6 +317,8 @@ function httpHandler(store, req, res) {
 
     statistics.incCounter(action + "-" + logTableName)
 
+    var store = getStore(stores, options, action, data)
+
     actions[action](store, data, function(err, data) {
       if (logger)
       {
@@ -329,6 +338,59 @@ function httpHandler(store, req, res) {
       sendData(req, res, data)
     })
   })
+}
+
+function getStore(stores, options, action, data)
+{
+  var table = getTableName(action, data)
+  var store = stores[table];
+  
+  if (store == null)
+  {
+    var newOptions = {}
+    
+    for (var i in options) 
+    {
+        newOptions[i] = options[i];
+    }
+    
+    newOptions.path = newOptions.path + "/" + table
+    store = db.create(newOptions);
+  }
+  
+  stores[table] = store;
+  return store
+}
+
+function getTableName(action, data)
+{
+  if (!data)
+  {
+    console.log("Data is null, Aborting!");
+    return;
+  }
+  
+  if (!action)
+  {
+    console.log("Action is null, Aborting!");
+    return;
+  }
+  
+  if ((action == "batchWriteItem") ||
+      (action == "batchGetItem"))
+  {
+    for (var tableName in data.RequestItems)
+    {
+      return tableName;
+    } 
+  }
+  else if (data.TableName != null)
+  {
+    return data.TableName;
+  }
+
+  console.log(action)
+  console.log(data)
 }
 
 if (require.main === module) dynalite().listen(4567)
