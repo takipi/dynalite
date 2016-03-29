@@ -342,7 +342,17 @@ function httpHandler(stores, options, req, res) {
 
 function getStore(stores, options, action, data)
 {
-  var table = getTableName(action, data)
+  var table
+  
+  if (options.flat_layout)
+  {
+    table = ""
+  }
+  else
+  {
+    table = getTableName(action, data)
+  }
+  
   var store = stores[table];
   
   if (store == null)
