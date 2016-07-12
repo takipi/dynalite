@@ -5,8 +5,9 @@ module.exports = function deleteItem(store, data, cb) {
   store.getTable(data.TableName, function(err, table) {
     if (err) return cb(err)
 
-    var key = db.validateKey(data.Key, table), itemDb = store.getItemDb(data.TableName)
-    if (key instanceof Error) return cb(key)
+    if ((err = db.validateKey(data.Key, table)) != null) return cb(err)
+
+    var itemDb = store.getItemDb(data.TableName), key = db.createKey(data.Key, table)
 
     itemDb.lock(key, function(release) {
       cb = release(cb)
@@ -21,17 +22,15 @@ module.exports = function deleteItem(store, data, cb) {
         if (existingItem && data.ReturnValues == 'ALL_OLD')
           returnObj.Attributes = existingItem
 
-        if (~['TOTAL', 'INDEXES'].indexOf(data.ReturnConsumedCapacity))
-          returnObj.ConsumedCapacity = {
-            CapacityUnits: db.capacityUnits(existingItem),
-            TableName: data.TableName,
-            Table: data.ReturnConsumedCapacity == 'INDEXES' ?
-              {CapacityUnits: db.capacityUnits(existingItem)} : undefined,
-          }
+        returnObj.ConsumedCapacity = db.addConsumedCapacity(data, false, existingItem)
 
-        itemDb.del(key, function(err) {
+        db.updateIndexes(store, table, existingItem, null, function(err) {
           if (err) return cb(err)
-          cb(null, returnObj)
+
+          itemDb.del(key, function(err) {
+            if (err) return cb(err)
+            cb(null, returnObj)
+          })
         })
       })
     })

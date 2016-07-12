@@ -62,10 +62,11 @@ module.exports = function updateTable(store, data, cb) {
           })
 
           tableDb.put(key, table, function(err) {
+            // eslint-disable-next-line no-console
             if (err && !/Database is not open/.test(err)) console.error(err.stack || err)
           })
 
-        }, store.updateTableMs)
+        }, store.options.updateTableMs)
 
         cb(null, {TableDescription: table})
       })

@@ -22,7 +22,7 @@ module.exports = function batchGetItem(store, data, cb) {
         if (tableRes.Item) {
           // TODO: This is totally inefficient - should fix this
           var newSize = totalSize + db.itemSize(tableRes.Item)
-          if (newSize > (1024 * 1024 + db.MAX_SIZE - 3)) {
+          if (newSize > (1024 * 1024 + store.options.maxItemSize - 3)) {
             if (!res.UnprocessedKeys[table]) {
               res.UnprocessedKeys[table] = {Keys: []}
               if (data.RequestItems[table].AttributesToGet)
@@ -62,22 +62,19 @@ module.exports = function batchGetItem(store, data, cb) {
     store.getTable(tableName, function(err, table) {
       if (err) return cb(err)
 
-      var req = data.RequestItems[tableName], i, key, options, gets = [], seenKeys = {}
+      var req = data.RequestItems[tableName], i, key, options, gets = []
 
       for (i = 0; i < req.Keys.length; i++) {
         key = req.Keys[i]
 
+        if ((err = db.validateKey(key, table)) != null) return cb(err)
+
         options = {TableName: tableName, Key: key}
+        if (req._projection) options._projection = req._projection
         if (req.AttributesToGet) options.AttributesToGet = req.AttributesToGet
         if (req.ConsistentRead) options.ConsistentRead = req.ConsistentRead
         if (data.ReturnConsumedCapacity) options.ReturnConsumedCapacity = data.ReturnConsumedCapacity
         gets.push(options)
-
-        key = db.validateKey(key, table)
-        if (key instanceof Error) return cb(key)
-        if (seenKeys[key])
-          return cb(db.validationError('Provided list of item keys contains duplicates'))
-        seenKeys[key] = true
       }
 
       requests[tableName] = async.map.bind(async, gets, function(data, cb) { return getItem(store, data, cb) })
