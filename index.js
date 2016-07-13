@@ -279,6 +279,9 @@ function httpHandler(stores, options, req, res) {
       return sendData(req, res, {__type: 'com.amazon.coral.service#SerializationException'}, 400)
     }
 
+    var action = validations.toLowerFirst(target[1])
+    var actionValidation = actionValidations[action]
+    
     var timerId = Math.floor((Math.random() * 2147483647) + 1).toString()
     var logTableName = data.TableName
 
@@ -304,8 +307,6 @@ function httpHandler(stores, options, req, res) {
 
     var store = getStore(stores, options, action, data)
 
-    var action = validations.toLowerFirst(target[1])
-    var actionValidation = actionValidations[action]
     try {
       data = validations.checkTypes(data, actionValidation.types)
       validations.checkValidations(data, actionValidation.types, actionValidation.custom, store)
