@@ -553,7 +553,9 @@ function matchesFilter(val, filter, conditionalOperator) {
       filter[attr].ComparisonOperator || 'EQ'
     var result = compare(comp, val[attr], filter[attr].AttributeValueList || filter[attr].Value)
     if (!result) {
-      return false
+      if (conditionalOperator != 'OR') {
+        return false
+      }
     } else if (conditionalOperator == 'OR') {
       return true
     }
