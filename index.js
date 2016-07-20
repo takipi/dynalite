@@ -47,7 +47,7 @@ function dynalite(options) {
     for (var i = 0; i < stores.length; i++)
     {
       var store = stores[i];
-      
+
       store.db.close(function(err) {
         if (err) return cb(err)
         // Recreate the store if the user wants to listen again
@@ -56,8 +56,7 @@ function dynalite(options) {
           httpServerListen.apply(server, arguments)
         }
         httpServerClose.call(server, cb)
-      })
-      
+     })
     }
   }
 
@@ -282,18 +281,7 @@ function httpHandler(stores, options, req, res) {
 
     var action = validations.toLowerFirst(target[1])
     var actionValidation = actionValidations[action]
-    try {
-      data = validations.checkTypes(data, actionValidation.types)
-      validations.checkValidations(data, actionValidation.types, actionValidation.custom)
-    } catch (e) {
-      if (e.statusCode)
-      {
-        if (logger) logger.error({exData: e.body}, "Error while validating data for action: " + action)
-        return sendData(req, res, e.body, e.statusCode)
-      }
-      throw e
-    }
-
+    
     var timerId = Math.floor((Math.random() * 2147483647) + 1).toString()
     var logTableName = data.TableName
 
@@ -318,6 +306,18 @@ function httpHandler(stores, options, req, res) {
     statistics.incCounter(action + "-" + logTableName)
 
     var store = getStore(stores, options, action, data)
+
+    try {
+      data = validations.checkTypes(data, actionValidation.types)
+      validations.checkValidations(data, actionValidation.types, actionValidation.custom, store)
+    } catch (e) {
+      if (e.statusCode)
+      {
+        if (logger) logger.error({exData: e.body}, "Error while validating data for action: " + action)
+        return sendData(req, res, e.body, e.statusCode)
+      }
+      throw e
+    }
 
     actions[action](store, data, function(err, data) {
       if (logger)

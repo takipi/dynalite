@@ -1,35 +1,54 @@
 var crypto = require('crypto'),
-    lazy = require('lazy'),
+    events = require('events'),
+    async = require('async'),
+    Lazy = require('lazy'),
     levelup = require('levelup'),
     memdown = require('memdown'),
     sublevel = require('level-sublevel'),
     Lock = require('lock'),
     Big = require('big.js')
 
-exports.MAX_SIZE = 409600
+exports.MAX_SIZE = 409600 // TODO: get rid of this? or leave for backwards compat?
 exports.create = create
 exports.lazy = lazyStream
 exports.validateKey = validateKey
 exports.validateItem = validateItem
+exports.validateUpdates = validateUpdates
+exports.validateKeyPiece = validateKeyPiece
+exports.validateKeyPaths = validateKeyPaths
+exports.createKey = createKey
+exports.createIndexKey = createIndexKey
+exports.traverseKey = traverseKey
+exports.traverseIndexes = traverseIndexes
+exports.toRangeStr = toRangeStr
 exports.toLexiStr = toLexiStr
 exports.hashPrefix = hashPrefix
-exports.itemCompare = itemCompare
 exports.validationError = validationError
 exports.checkConditional = checkConditional
 exports.itemSize = itemSize
 exports.capacityUnits = capacityUnits
+exports.addConsumedCapacity = addConsumedCapacity
 exports.matchesFilter = matchesFilter
+exports.matchesExprFilter = matchesExprFilter
+exports.compare = compare
+exports.mapPaths = mapPaths
+exports.mapPath = mapPath
+exports.queryTable = queryTable
+exports.updateIndexes = updateIndexes
+exports.getIndexActions = getIndexActions
 
 function create(options) {
   options = options || {}
   if (options.createTableMs == null) options.createTableMs = 500
   if (options.deleteTableMs == null) options.deleteTableMs = 500
   if (options.updateTableMs == null) options.updateTableMs = 500
+  if (options.maxItemSizeKb == null) options.maxItemSizeKb = exports.MAX_SIZE / 1024
+  options.maxItemSize = options.maxItemSizeKb * 1024
 
   var db = levelup(options.path || '/does/not/matter', options.path ? options : {db: memdown}),
       sublevelDb = sublevel(db),
       tableDb = sublevelDb.sublevel('table', {valueEncoding: 'json'}),
-      itemDbs = []
+      subDbs = Object.create(null)
 
   tableDb.lock = new Lock()
 
@@ -38,18 +57,34 @@ function create(options) {
   tableDb.awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1'
 
   function getItemDb(name) {
-    if (!itemDbs[name]) {
-      itemDbs[name] = sublevelDb.sublevel('item-' + name, {valueEncoding: 'json'})
-      itemDbs[name].lock = new Lock()
-    }
-    return itemDbs[name]
+    return getSubDb('item-' + name)
   }
 
   function deleteItemDb(name, cb) {
-    var itemDb = getItemDb(name)
-    delete itemDbs[name]
-    lazyStream(itemDb.createKeyStream(), cb).join(function(keys) {
-      itemDb.batch(keys.map(function(key) { return {type: 'del', key: key} }), cb)
+    deleteSubDb('item-' + name, cb)
+  }
+
+  function getIndexDb(indexType, tableName, indexName) {
+    return getSubDb('index-' + indexType.toLowerCase() + '~' + tableName + '~' + indexName)
+  }
+
+  function deleteIndexDb(indexType, tableName, indexName, cb) {
+    deleteSubDb('index-' + indexType.toLowerCase() + '~' + tableName + '~' + indexName, cb)
+  }
+
+  function getSubDb(name) {
+    if (!subDbs[name]) {
+      subDbs[name] = sublevelDb.sublevel(name, {valueEncoding: 'json'})
+      subDbs[name].lock = new Lock()
+    }
+    return subDbs[name]
+  }
+
+  function deleteSubDb(name, cb) {
+    var subDb = getSubDb(name)
+    delete subDbs[name]
+    lazyStream(subDb.createKeyStream(), cb).join(function(keys) {
+      subDb.batch(keys.map(function(key) { return {type: 'del', key: key} }), cb)
     })
   }
 
@@ -85,13 +120,13 @@ function create(options) {
   }
 
   return {
-    createTableMs: options.createTableMs,
-    deleteTableMs: options.deleteTableMs,
-    updateTableMs: options.updateTableMs,
+    options: options,
     db: db,
     tableDb: tableDb,
     getItemDb: getItemDb,
     deleteItemDb: deleteItemDb,
+    getIndexDb: getIndexDb,
+    deleteIndexDb: deleteIndexDb,
     getTable: getTable,
     recreate: recreate,
   }
@@ -99,53 +134,139 @@ function create(options) {
 
 function lazyStream(stream, errHandler) {
   if (errHandler) stream.on('error', errHandler)
-  var streamAsLazy = lazy(stream)
+  var streamAsLazy = new Lazy(stream)
   if (stream.destroy) streamAsLazy.on('pipe', stream.destroy.bind(stream))
   return streamAsLazy
 }
 
-function validateKey(dataKey, table) {
-  if (table.KeySchema.length != Object.keys(dataKey).length) return validationError()
-
-  var keyStr, i, j, attr, type, sizeError
-  for (i = 0; i < table.KeySchema.length; i++) {
-    attr = table.KeySchema[i].AttributeName
-    if (dataKey[attr] == null) return validationError()
-    for (j = 0; j < table.AttributeDefinitions.length; j++) {
-      if (table.AttributeDefinitions[j].AttributeName != attr) continue
-      type = table.AttributeDefinitions[j].AttributeType
-      if (dataKey[attr][type] == null) return validationError()
-      sizeError = checkKeySize(dataKey[attr][type], type, !i)
-      if (sizeError) return sizeError
-      if (!keyStr) keyStr = hashPrefix(dataKey[attr][type], type)
-      keyStr += '~' + toLexiStr(dataKey[attr][type], type)
-      break
-    }
+function validateKey(dataKey, table, keySchema) {
+  if (keySchema == null) keySchema = table.KeySchema
+  if (keySchema.length != Object.keys(dataKey).length) {
+    return validationError('The provided key element does not match the schema')
   }
-  return keyStr
+  return traverseKey(table, keySchema, function(attr, type, isHash) {
+    return validateKeyPiece(dataKey, attr, type, isHash)
+  })
 }
 
 function validateItem(dataItem, table) {
-  var keyStr, i, j, k, attr, type, sizeError
-  for (i = 0; i < table.KeySchema.length; i++) {
-    attr = table.KeySchema[i].AttributeName
-    if (dataItem[attr] == null)
+  return traverseKey(table, function(attr, type, isHash) {
+    if (dataItem[attr] == null) {
       return validationError('One or more parameter values were invalid: ' +
         'Missing the key ' + attr + ' in the item')
+    }
+    if (dataItem[attr][type] == null) {
+      return validationError('One or more parameter values were invalid: ' +
+        'Type mismatch for key ' + attr + ' expected: ' + type +
+        ' actual: ' + Object.keys(dataItem[attr])[0])
+    }
+    return checkKeySize(dataItem[attr][type], type, isHash)
+  }) || traverseIndexes(table, function(attr, type, index) {
+    if (dataItem[attr] != null && dataItem[attr][type] == null) {
+      return validationError('One or more parameter values were invalid: ' +
+        'Type mismatch for Index Key ' + attr + ' Expected: ' + type +
+        ' Actual: ' + Object.keys(dataItem[attr])[0] + ' IndexName: ' + index.IndexName)
+    }
+  })
+}
+
+function validateUpdates(attributeUpdates, expressionUpdates, table) {
+  if (attributeUpdates == null && expressionUpdates == null) return
+
+  return traverseKey(table, function(attr) {
+    var hasKey = false
+    if (expressionUpdates) {
+      var sections = expressionUpdates.sections
+      for (var j = 0; j < sections.length; j++) {
+        if (sections[j].path[0] == attr) {
+          hasKey = true
+          break
+        }
+      }
+    } else {
+      hasKey = attributeUpdates[attr] != null
+    }
+    if (hasKey) {
+      return validationError('One or more parameter values were invalid: ' +
+        'Cannot update attribute ' + attr + '. This attribute is part of the key')
+    }
+  }) || traverseIndexes(table, function(attr, type, index) {
+    var actualType
+    if (expressionUpdates) {
+      var sections = expressionUpdates.sections
+      for (var i = 0; i < sections.length; i++) {
+        var section = sections[i]
+        if (section.path.length == 1 && section.path[0] == attr) {
+          actualType = section.attrType
+          break
+        }
+      }
+    } else {
+      actualType = attributeUpdates[attr] ? Object.keys(attributeUpdates[attr].Value)[0] : null
+    }
+    if (actualType != null && actualType != type) {
+      return validationError('One or more parameter values were invalid: ' +
+        'Type mismatch for Index Key ' + attr + ' Expected: ' + type +
+        ' Actual: ' + actualType + ' IndexName: ' + index.IndexName)
+    }
+  }) || validateKeyPaths((expressionUpdates || {}).nestedPaths, table)
+}
+
+function validateKeyPiece(key, attr, type, isHash) {
+  if (key[attr] == null || key[attr][type] == null) {
+    return validationError('The provided key element does not match the schema')
+  }
+  return checkKeySize(key[attr][type], type, isHash)
+}
+
+function validateKeyPaths(nestedPaths, table) {
+  if (!nestedPaths) return
+  return traverseKey(table, function(attr) {
+    if (nestedPaths[attr]) {
+      return validationError('Key attributes must be scalars; ' +
+        'list random access \'[]\' and map lookup \'.\' are not allowed: Key: ' + attr)
+    }
+  }) || traverseIndexes(table, function(attr) {
+    if (nestedPaths[attr]) {
+      return validationError('Key attributes must be scalars; ' +
+        'list random access \'[]\' and map lookup \'.\' are not allowed: IndexKey: ' + attr)
+    }
+  })
+}
+
+function createKey(item, table, keySchema) {
+  if (keySchema == null) keySchema = table.KeySchema
+  var keyStr
+  traverseKey(table, keySchema, function(attr, type, isHash) {
+    if (isHash) keyStr = hashPrefix(item[attr][type], type) + '/'
+    keyStr += toRangeStr(item[attr][type], type) + '/'
+  })
+  return keyStr
+}
+
+function createIndexKey(item, table, keySchema) {
+  var tableKeyPieces = []
+  traverseKey(table, function(attr, type) { tableKeyPieces.push(item[attr][type], type) })
+  return createKey(item, table, keySchema) + hashPrefix.apply(this, tableKeyPieces)
+}
+
+function traverseKey(table, keySchema, visitKey) {
+  if (typeof keySchema == 'function') { visitKey = keySchema; keySchema = table.KeySchema }
+  var i, j, attr, type, found
+  for (i = 0; i < keySchema.length; i++) {
+    attr = keySchema[i].AttributeName
     for (j = 0; j < table.AttributeDefinitions.length; j++) {
       if (table.AttributeDefinitions[j].AttributeName != attr) continue
       type = table.AttributeDefinitions[j].AttributeType
-      if (dataItem[attr][type] == null)
-        return validationError('One or more parameter values were invalid: ' +
-          'Type mismatch for key ' + attr + ' expected: ' + table.AttributeDefinitions[j].AttributeType +
-          ' actual: ' + Object.keys(dataItem[attr])[0])
-      sizeError = checkKeySize(dataItem[attr][type], type, !i)
-      if (sizeError) return sizeError
-      if (!keyStr) keyStr = hashPrefix(dataItem[attr][type], type)
-      keyStr += '~' + toLexiStr(dataItem[attr][type], type)
       break
     }
+    found = visitKey(attr, type, !i)
+    if (found) return found
   }
+}
+
+function traverseIndexes(table, visitIndex) {
+  var i, j, k, attr, type, found
   if (table.GlobalSecondaryIndexes) {
     for (i = table.GlobalSecondaryIndexes.length - 1; i >= 0; i--) {
       for (k = 0; k < table.GlobalSecondaryIndexes[i].KeySchema.length; k++) {
@@ -153,11 +274,10 @@ function validateItem(dataItem, table) {
         for (j = 0; j < table.AttributeDefinitions.length; j++) {
           if (table.AttributeDefinitions[j].AttributeName != attr) continue
           type = table.AttributeDefinitions[j].AttributeType
-          if (dataItem[attr] && !dataItem[attr][type])
-            return validationError('One or more parameter values were invalid: ' +
-              'Type mismatch for Index Key ' + attr + ' Expected: ' + type + ' Actual: ' +
-              Object.keys(dataItem[attr])[0] + ' IndexName: ' + table.GlobalSecondaryIndexes[i].IndexName)
+          break
         }
+        found = visitIndex(attr, type, table.GlobalSecondaryIndexes[i], true)
+        if (found) return found
       }
     }
   }
@@ -167,14 +287,12 @@ function validateItem(dataItem, table) {
       for (j = 0; j < table.AttributeDefinitions.length; j++) {
         if (table.AttributeDefinitions[j].AttributeName != attr) continue
         type = table.AttributeDefinitions[j].AttributeType
-        if (dataItem[attr] && !dataItem[attr][type])
-          return validationError('One or more parameter values were invalid: ' +
-            'Type mismatch for Index Key ' + attr + ' Expected: ' + type + ' Actual: ' +
-            Object.keys(dataItem[attr])[0] + ' IndexName: ' + table.LocalSecondaryIndexes[i].IndexName)
+        break
       }
+      found = visitIndex(attr, type, table.LocalSecondaryIndexes[i], false)
+      if (found) return found
     }
   }
-  return keyStr
 }
 
 function checkKeySize(keyPiece, type, isHash) {
@@ -189,6 +307,15 @@ function checkKeySize(keyPiece, type, isHash) {
       'Aggregated size of all range keys has exceeded the size limit of 1024 bytes')
 }
 
+function toRangeStr(keyPiece, type) {
+  if (type == null) {
+    type = Object.keys(keyPiece)[0]
+    keyPiece = keyPiece[type]
+  }
+  if (type == 'S') return new Buffer(keyPiece, 'utf8').toString('hex')
+  return toLexiStr(keyPiece, type)
+}
+
 // Creates lexigraphically sortable number strings
 //  0     7c    009   = '07c009' = -99.1
 // |-|   |--| |-----|
@@ -201,6 +328,10 @@ function checkKeySize(keyPiece, type, isHash) {
 //
 function toLexiStr(keyPiece, type) {
   if (keyPiece == null) return ''
+  if (type == null) {
+    type = Object.keys(keyPiece)[0]
+    keyPiece = keyPiece[type]
+  }
   if (type == 'B') return new Buffer(keyPiece, 'base64').toString('hex')
   if (type != 'N') return keyPiece
   var bigNum = new Big(keyPiece), digits,
@@ -279,46 +410,23 @@ function numToBuffer(num) {
   return new Buffer(byteArray)
 }
 
-function itemCompare(rangeKey, table) {
-  return function(item1, item2) {
-    var val1, val2, rangeType, tableHashKey, tableRangeKey, tableHashType, tableRangeType,
-        hashVal1, rangeVal1, hashVal2, rangeVal2
-    if (rangeKey) {
-      rangeType = Object.keys(item1[rangeKey] || item2[rangeKey] || {})[0]
-      rangeVal1 = (item1[rangeKey] || {})[rangeType]
-      rangeVal2 = (item2[rangeKey] || {})[rangeType]
-      val1 = toLexiStr(rangeVal1, rangeType)
-      val2 = toLexiStr(rangeVal2, rangeType)
-    }
-    if (!rangeKey || val1 == val2) {
-      tableHashKey = table.KeySchema[0].AttributeName
-      tableRangeKey = (table.KeySchema[1] || {}).AttributeName
-      tableHashType = Object.keys(item1[tableHashKey] || item2[tableHashKey] || {})[0]
-      tableRangeType = Object.keys(item1[tableRangeKey] || item2[tableRangeKey] || {})[0]
-      hashVal1 = item1[tableHashKey][tableHashType]
-      rangeVal1 = (item1[tableRangeKey] || {})[tableRangeType]
-      hashVal2 = item2[tableHashKey][tableHashType]
-      rangeVal2 = (item2[tableRangeKey] || {})[tableRangeType]
-      val1 = hashPrefix(hashVal1, tableHashType, rangeVal1, tableRangeType)
-      val2 = hashPrefix(hashVal2, tableHashType, rangeVal2, tableRangeType)
-    }
-    return val1 < val2 ? -1 : val1 > val2 ? 1 : 0
-  }
-}
-
 function checkConditional(data, existingItem) {
-  var expected = data.Expected
-  if (!expected) return null
-
   existingItem = existingItem || {}
 
-  if (!matchesFilter(existingItem, expected, data.ConditionalOperator)) {
+  if (data._condition) {
+    if (!matchesExprFilter(existingItem, data._condition.expression)) {
+      return conditionalError()
+    }
+    return null
+  } else if (!data.Expected) {
+    return null
+  }
+  if (!matchesFilter(existingItem, data.Expected, data.ConditionalOperator)) {
     return conditionalError()
   }
 }
 
 function validationError(msg) {
-  if (msg == null) msg = 'The provided key element does not match the schema'
   var err = new Error(msg)
   err.statusCode = 400
   err.body = {
@@ -339,43 +447,95 @@ function conditionalError(msg) {
   return err
 }
 
-function itemSize(item, skipAttr) {
-  var size = 0, attr, type, val
-  for (attr in item) {
-    type = Object.keys(item[attr])[0]
-    val = item[attr][type]
-    size += skipAttr ? 2 : attr.length
-    switch (type) {
-      case 'S':
-        size += val.length
-        break
-      case 'B':
-        size += new Buffer(val, 'base64').length
-        break
-      case 'N':
-        val = new Big(val)
-        size += Math.ceil(val.c.length / 2) + (val.e % 2 ? 1 : 2)
-        break
-      case 'SS':
-        size += val.reduce(function(sum, x) { return sum + x.length }, skipAttr ? val.length : 0) // eslint-disable-line no-loop-func
-        break
-      case 'BS':
-        size += val.reduce(function(sum, x) { return sum + new Buffer(x, 'base64').length }, skipAttr ? val.length : 0) // eslint-disable-line no-loop-func
-        break
-      case 'NS':
-        size += val.reduce(function(sum, x) { // eslint-disable-line no-loop-func
-          x = new Big(x)
-          return sum + Math.ceil(x.c.length / 2) + (x.e % 2 ? 1 : 2)
-        }, skipAttr ? val.length : 0)
-        break
+function itemSize(item, compress, addMetaSize, rangeKey) {
+  // Size of compressed item (for checking query/scan limit) seems complicated,
+  // probably due to some internal serialization format.
+  var rangeKeySize = 0
+  var size = Object.keys(item).reduce(function(sum, attr) {
+    var size = valSizeWithStorage(item[attr], compress && attr != rangeKey)
+    if (compress && attr == rangeKey) {
+      rangeKeySize = size
+      return sum
     }
+    return sum + size + (compress ? 1 : attr.length)
+  }, 0)
+  return !addMetaSize ? size : 2 + size + ((1 + Math.floor((1 + size) / 3072)) * (18 + rangeKeySize))
+}
+
+function valSizeWithStorage(itemAttr, compress) {
+  var type = Object.keys(itemAttr)[0]
+  var val = itemAttr[type]
+  var size = valSize(val, type, compress)
+  if (!compress) return size
+  switch (type) {
+    case 'S':
+      return size + (size < 128 ? 1 : size < 16384 ? 2 : 3)
+    case 'B':
+      return size + 1
+    case 'N':
+      return size + 1
+    case 'SS':
+      return size + val.length + 1
+    case 'BS':
+      return size + val.length + 1
+    case 'NS':
+      return size + val.length + 1
+    case 'NULL':
+      return 0
+    case 'BOOL':
+      return 1
+    case 'L':
+      return size
+    case 'M':
+      return size
   }
-  return size
+}
+
+function valSize(val, type, compress) {
+  switch (type) {
+    case 'S':
+      return val.length
+    case 'B':
+      return new Buffer(val, 'base64').length
+    case 'N':
+      val = new Big(val)
+      var numDigits = val.c.length
+      if (numDigits == 1 && val.c[0] === 0) return 1
+      return 1 + Math.ceil(numDigits / 2) + (numDigits % 2 || val.e % 2 ? 0 : 1) + (val.s == -1 ? 1 : 0)
+    case 'SS':
+      return val.reduce(function(sum, x) { return sum + valSize(x, 'S') }, 0) // eslint-disable-line no-loop-func
+    case 'BS':
+      return val.reduce(function(sum, x) { return sum + valSize(x, 'B') }, 0) // eslint-disable-line no-loop-func
+    case 'NS':
+      return val.reduce(function(sum, x) { return sum + valSize(x, 'N') }, 0) // eslint-disable-line no-loop-func
+    case 'NULL':
+      return 1
+    case 'BOOL':
+      return 1
+    case 'L':
+      return 3 + val.reduce(function(sum, val) { return sum + 1 + valSizeWithStorage(val, compress) }, 0)
+    case 'M':
+      return 3 + Object.keys(val).length + itemSize(val, compress)
+  }
 }
 
 function capacityUnits(item, isRead, isConsistent) {
   var size = item ? Math.ceil(itemSize(item) / 1024 / (isRead ? 4 : 1)) : 1
   return size / (!isRead || isConsistent ? 1 : 2)
+}
+
+function addConsumedCapacity(data, isRead, newItem, oldItem) {
+  if (~['TOTAL', 'INDEXES'].indexOf(data.ReturnConsumedCapacity)) {
+    var capacity = capacityUnits(newItem, isRead, data.ConsistentRead)
+    if (oldItem != null) {
+      capacity = Math.max(capacity, capacityUnits(oldItem, isRead, data.ConsistentRead))
+    }
+    return {
+      CapacityUnits: capacity,
+      TableName: data.TableName,
+      Table: data.ReturnConsumedCapacity == 'INDEXES' ? {CapacityUnits: capacity} : undefined,
+    }
+  }
 }
 
 function valsEqual(val1, val2) {
@@ -388,112 +548,386 @@ function valsEqual(val1, val2) {
 }
 
 function matchesFilter(val, filter, conditionalOperator) {
-  var results = Object.keys(filter).map(function(attr) {
+  for (var attr in filter) {
     var comp = filter[attr].Exists != null ? (filter[attr].Exists ? 'NOT_NULL' : 'NULL') :
-          filter[attr].ComparisonOperator || 'EQ',
-        compVals = filter[attr].AttributeValueList || (filter[attr].Value ? [filter[attr].Value] : null),
-        compType = compVals ? Object.keys(compVals[0])[0] : null,
-        compVal = compVals ? compVals[0][compType] : null,
-        attrType = val[attr] ? Object.keys(val[attr])[0] : null,
-        attrVal = val[attr] ? val[attr][attrType] : null
+      filter[attr].ComparisonOperator || 'EQ'
+    var result = compare(comp, val[attr], filter[attr].AttributeValueList || filter[attr].Value)
+    if (!result) {
+      if (conditionalOperator != 'OR') {
+        return false
+      }
+    } else if (conditionalOperator == 'OR') {
+      return true
+    }
+  }
+  return true
+}
 
-    switch (comp) {
-      case 'EQ':
-        if (compType != attrType || !valsEqual(attrVal, compVal)) return false
-        break
-      case 'NE':
-        if (compType == attrType && valsEqual(attrVal, compVal)) return false
-        break
-      case 'LE':
-        if (compType != attrType ||
-          (attrType == 'N' && !new Big(attrVal).lte(compVal)) ||
-          (attrType != 'N' && toLexiStr(attrVal, attrType) > toLexiStr(compVal, attrType))) return false
-        break
-      case 'LT':
-        if (compType != attrType ||
-          (attrType == 'N' && !new Big(attrVal).lt(compVal)) ||
-          (attrType != 'N' && toLexiStr(attrVal, attrType) >= toLexiStr(compVal, attrType))) return false
-        break
-      case 'GE':
-        if (compType != attrType ||
-          (attrType == 'N' && !new Big(attrVal).gte(compVal)) ||
-          (attrType != 'N' && toLexiStr(attrVal, attrType) < toLexiStr(compVal, attrType))) return false
-        break
-      case 'GT':
-        if (compType != attrType ||
-          (attrType == 'N' && !new Big(attrVal).gt(compVal)) ||
-          (attrType != 'N' && toLexiStr(attrVal, attrType) <= toLexiStr(compVal, attrType))) return false
-        break
-      case 'NOT_NULL':
-        if (attrVal == null) return false
-        break
-      case 'NULL':
-        if (attrVal != null) return false
-        break
-      case 'CONTAINS':
-        if (compType == 'S') {
-          if (attrType != 'S' && attrType != 'SS') return false
-          if (!~attrVal.indexOf(compVal)) return false
-        }
-        if (compType == 'N') {
-          if (attrType != 'NS') return false
-          if (!~attrVal.indexOf(compVal)) return false
-        }
-        if (compType == 'B') {
-          if (attrType != 'B' && attrType != 'BS') return false
-          if (attrType == 'B') {
-            attrVal = new Buffer(attrVal, 'base64').toString()
-            compVal = new Buffer(compVal, 'base64').toString()
-          }
-          if (!~attrVal.indexOf(compVal)) return false
-        }
-        break
-      case 'NOT_CONTAINS':
-        if (compType == 'S' && (attrType == 'S' || attrType == 'SS') &&
-            ~attrVal.indexOf(compVal)) return false
-        if (compType == 'N' && attrType == 'NS' &&
-            ~attrVal.indexOf(compVal)) return false
-        if (compType == 'B') {
-          if (attrType == 'B') {
-            attrVal = new Buffer(attrVal, 'base64').toString()
-            compVal = new Buffer(compVal, 'base64').toString()
-          }
-          if ((attrType == 'B' || attrType == 'BS') &&
-              ~attrVal.indexOf(compVal)) return false
-        }
-        break
-      case 'BEGINS_WITH':
-        if (compType != attrType) return false
-        if (compType == 'B') {
+function matchesExprFilter(item, expr) {
+  if (expr.type == 'and') {
+    return matchesExprFilter(item, expr.args[0]) && matchesExprFilter(item, expr.args[1])
+  } else if (expr.type == 'or') {
+    return matchesExprFilter(item, expr.args[0]) || matchesExprFilter(item, expr.args[1])
+  } else if (expr.type == 'not') {
+    return !matchesExprFilter(item, expr.args[0])
+  }
+  var args = expr.args.map(function(arg) { return resolveArg(arg, item) })
+  return compare(expr.type == 'function' ? expr.name : expr.type, args[0], args.slice(1))
+}
+
+function resolveArg(arg, item) {
+  if (Array.isArray(arg)) {
+    return mapPath(arg, item)
+  } else if (arg.type == 'function' && arg.name == 'size') {
+    var args = arg.args.map(function(arg) { return resolveArg(arg, item) })
+    var val = args[0], length
+    if (!val) {
+      return null
+    } else if (val.S) {
+      length = val.S.length
+    } else if (val.B) {
+      length = new Buffer(val.B, 'base64').length
+    } else if (val.SS || val.BS || val.NS || val.L) {
+      length = (val.SS || val.BS || val.NS || val.L).length
+    } else if (val.M) {
+      length = Object.keys(val.M).length
+    }
+    return length != null ? {N: length.toString()} : null
+  } else {
+    return arg
+  }
+}
+
+function compare(comp, val, compVals) {
+  if (!Array.isArray(compVals)) compVals = [compVals]
+
+  var attrType = val ? Object.keys(val)[0] : null
+  var attrVal = attrType ? val[attrType] : null
+  var compType = compVals && compVals[0] ? Object.keys(compVals[0])[0] : null
+  var compVal = compType ? compVals[0][compType] : null
+
+  switch (comp) {
+    case 'EQ':
+    case '=':
+      if (compType != attrType || !valsEqual(attrVal, compVal)) return false
+      break
+    case 'NE':
+    case '<>':
+      if (compType == attrType && valsEqual(attrVal, compVal)) return false
+      break
+    case 'LE':
+    case '<=':
+      if (compType != attrType ||
+        (attrType == 'N' && !new Big(attrVal).lte(compVal)) ||
+        (attrType != 'N' && toLexiStr(attrVal, attrType) > toLexiStr(compVal, attrType))) return false
+      break
+    case 'LT':
+    case '<':
+      if (compType != attrType ||
+        (attrType == 'N' && !new Big(attrVal).lt(compVal)) ||
+        (attrType != 'N' && toLexiStr(attrVal, attrType) >= toLexiStr(compVal, attrType))) return false
+      break
+    case 'GE':
+    case '>=':
+      if (compType != attrType ||
+        (attrType == 'N' && !new Big(attrVal).gte(compVal)) ||
+        (attrType != 'N' && toLexiStr(attrVal, attrType) < toLexiStr(compVal, attrType))) return false
+      break
+    case 'GT':
+    case '>':
+      if (compType != attrType ||
+        (attrType == 'N' && !new Big(attrVal).gt(compVal)) ||
+        (attrType != 'N' && toLexiStr(attrVal, attrType) <= toLexiStr(compVal, attrType))) return false
+      break
+    case 'NOT_NULL':
+    case 'attribute_exists':
+      if (attrVal == null) return false
+      break
+    case 'NULL':
+    case 'attribute_not_exists':
+      if (attrVal != null) return false
+      break
+    case 'CONTAINS':
+    case 'contains':
+      if (compType == 'S') {
+        if (attrType != 'S' && attrType != 'SS') return false
+        if (!~attrVal.indexOf(compVal)) return false
+      }
+      if (compType == 'N') {
+        if (attrType != 'NS') return false
+        if (!~attrVal.indexOf(compVal)) return false
+      }
+      if (compType == 'B') {
+        if (attrType != 'B' && attrType != 'BS') return false
+        if (attrType == 'B') {
           attrVal = new Buffer(attrVal, 'base64').toString()
           compVal = new Buffer(compVal, 'base64').toString()
         }
-        if (attrVal.indexOf(compVal) !== 0) return false
-        break
-      case 'IN':
-        if (!attrVal) return false
-        if (!compVals.some(function(compVal) {
-          compType = Object.keys(compVal)[0]
-          compVal = compVal[compType]
-          return compType == attrType && attrVal == compVal
-        })) return false
-        break
-      case 'BETWEEN':
-        if (!attrVal || compType != attrType ||
-          (attrType == 'N' && (!new Big(attrVal).gte(compVal) || !new Big(attrVal).lte(compVals[1].N))) ||
-          (attrType != 'N' && (toLexiStr(attrVal, attrType) < toLexiStr(compVal, attrType) ||
-            toLexiStr(attrVal, attrType) > toLexiStr(compVals[1][compType], attrType)))) return false
+        if (!~attrVal.indexOf(compVal)) return false
+      }
+      break
+    case 'NOT_CONTAINS':
+      if (compType == 'S' && (attrType == 'S' || attrType == 'SS') &&
+          ~attrVal.indexOf(compVal)) return false
+      if (compType == 'N' && attrType == 'NS' &&
+          ~attrVal.indexOf(compVal)) return false
+      if (compType == 'B') {
+        if (attrType == 'B') {
+          attrVal = new Buffer(attrVal, 'base64').toString()
+          compVal = new Buffer(compVal, 'base64').toString()
+        }
+        if ((attrType == 'B' || attrType == 'BS') &&
+            ~attrVal.indexOf(compVal)) return false
+      }
+      break
+    case 'BEGINS_WITH':
+    case 'begins_with':
+      if (compType != attrType) return false
+      if (compType == 'B') {
+        attrVal = new Buffer(attrVal, 'base64').toString()
+        compVal = new Buffer(compVal, 'base64').toString()
+      }
+      if (attrVal.indexOf(compVal) !== 0) return false
+      break
+    case 'IN':
+    case 'in':
+      if (!attrVal) return false
+      if (!compVals.some(function(compVal) {
+        compType = Object.keys(compVal)[0]
+        compVal = compVal[compType]
+        return compType == attrType && valsEqual(attrVal, compVal)
+      })) return false
+      break
+    case 'BETWEEN':
+    case 'between':
+      if (!attrVal || compType != attrType ||
+        (attrType == 'N' && (!new Big(attrVal).gte(compVal) || !new Big(attrVal).lte(compVals[1].N))) ||
+        (attrType != 'N' && (toLexiStr(attrVal, attrType) < toLexiStr(compVal, attrType) ||
+          toLexiStr(attrVal, attrType) > toLexiStr(compVals[1][compType], attrType)))) return false
+      break
+    case 'attribute_type':
+      if (!attrVal || !valsEqual(attrType, compVal)) return false
+  }
+  return true
+}
+
+function mapPaths(paths, item) {
+  var returnItem = Object.create(null), toSquash = []
+  for (var i = 0; i < paths.length; i++) {
+    var path = paths[i]
+    if (!Array.isArray(path)) path = [path]
+    var resolved = mapPath(path, item)
+    if (resolved == null) {
+      continue
     }
+    if (path.length == 1) {
+      returnItem[path[0]] = resolved
+      continue
+    }
+    var curItem = {M: returnItem}
+    for (var j = 0; j < path.length; j++) {
+      var piece = path[j]
+      if (typeof piece == 'number') {
+        curItem.L = curItem.L || []
+        if (piece > curItem.L.length && !~toSquash.indexOf(curItem)) {
+          toSquash.push(curItem)
+        }
+        if (j < paths[i].length - 1) {
+          curItem.L[piece] = curItem.L[piece] || {}
+          curItem = curItem.L[piece]
+        } else {
+          curItem.L[piece] = resolved
+        }
+      } else {
+        curItem.M = curItem.M || {}
+        if (j < paths[i].length - 1) {
+          curItem.M[piece] = curItem.M[piece] || {}
+          curItem = curItem.M[piece]
+        } else {
+          curItem.M[piece] = resolved
+        }
+      }
+    }
+  }
+  toSquash.forEach(function(obj) { obj.L = obj.L.filter(Boolean) })
+  return returnItem
+}
+
+function mapPath(path, item) {
+  if (path.length == 1) {
+    return item[path[0]]
+  }
+  var resolved = {M: item}
+  for (var i = 0; i < path.length; i++) {
+    var piece = path[i]
+    if (typeof piece == 'number' && resolved.L) {
+      resolved = resolved.L[piece]
+    } else if (resolved.M) {
+      resolved = resolved.M[piece]
+    } else {
+      resolved = null
+    }
+    if (resolved == null) {
+      break
+    }
+  }
+  return resolved
+}
+
+function queryTable(store, table, data, opts, isLocal, fetchFromItemDb, startKeyNames, cb) {
+  var itemDb = store.getItemDb(data.TableName), vals
+
+  if (data.IndexName) {
+    var indexDb = store.getIndexDb(isLocal ? 'local' : 'global', data.TableName, data.IndexName)
+    vals = lazyStream(indexDb.createValueStream(opts), cb)
+  } else {
+    vals = lazyStream(itemDb.createValueStream(opts), cb)
+  }
+
+  var tableCapacity = 0, indexCapacity = 0,
+    calculateCapacity = ~['TOTAL', 'INDEXES'].indexOf(data.ReturnConsumedCapacity)
+
+  if (fetchFromItemDb) {
+    var em = new events.EventEmitter
+    var queue = async.queue(function(key, cb) {
+      if (!key) {
+        em.emit('end')
+        return cb()
+      }
+      itemDb.get(key, function(err, item) {
+        if (err) {
+          em.emit('error', err)
+          return cb(err)
+        }
+        if (calculateCapacity) tableCapacity += itemSize(item)
+        em.emit('data', item)
+        cb()
+      })
+    })
+    var oldVals = vals
+    vals = new Lazy(em)
+
+    oldVals.map(function(item) {
+      if (calculateCapacity) indexCapacity += itemSize(item)
+      queue.push(createKey(item, table))
+    }).once('pipe', queue.push.bind(queue, ''))
+  }
+
+  var size = 0, count = 0, rangeKey = table.KeySchema[1] && table.KeySchema[1].AttributeName
+
+  vals = vals.takeWhile(function(val) {
+    if (count >= data.Limit || size >= 1024 * 1024) {
+      return false
+    }
+
+    if (calculateCapacity && !fetchFromItemDb) {
+      var capacitySize = itemSize(val)
+      if (data.IndexName) {
+        indexCapacity += capacitySize
+      } else {
+        tableCapacity += capacitySize
+      }
+    }
+
+    count++
+
+    size += itemSize(val, true, true, rangeKey)
+
     return true
   })
 
-  var passed = results.reduce(function(memo, result) {
-    if (result) memo++
-    return memo
-  }, 0)
+  var queryFilter = data.QueryFilter || data.ScanFilter
 
-  if (conditionalOperator && conditionalOperator === 'OR') {
-    if (passed === 0) return false
-  } else if (passed < Object.keys(filter).length) return false
-  return true
+  if (data._filter) {
+    vals = vals.filter(function(val) { return matchesExprFilter(val, data._filter.expression) })
+  } else if (queryFilter) {
+    vals = vals.filter(function(val) { return matchesFilter(val, queryFilter, data.ConditionalOperator) })
+  }
+
+  var paths = data._projection ? data._projection.paths : data.AttributesToGet
+  if (paths) {
+    vals = vals.map(mapPaths.bind(this, paths))
+  }
+
+  vals.join(function(items) {
+    var result = {ScannedCount: count}
+    if (count >= data.Limit || size >= 1024 * 1024) {
+      if (data.Limit) items.splice(data.Limit)
+      if (items.length) {
+        result.LastEvaluatedKey = startKeyNames.reduce(function(key, attr) {
+          key[attr] = items[items.length - 1][attr]
+          return key
+        }, {})
+      }
+    }
+    result.Count = items.length
+    if (data.Select != 'COUNT') result.Items = items
+    if (calculateCapacity) {
+      var tableUnits = Math.ceil(tableCapacity / 1024 / 4) * (data.ConsistentRead ? 1 : 0.5)
+      var indexUnits = Math.ceil(indexCapacity / 1024 / 4) * (data.ConsistentRead ? 1 : 0.5)
+      result.ConsumedCapacity = {
+        CapacityUnits: tableUnits + indexUnits,
+        TableName: data.TableName,
+      }
+      if (data.ReturnConsumedCapacity == 'INDEXES') {
+        result.ConsumedCapacity.Table = {CapacityUnits: tableUnits}
+        if (data.IndexName) {
+          var indexAttr = isLocal ? 'LocalSecondaryIndexes' : 'GlobalSecondaryIndexes'
+          result.ConsumedCapacity[indexAttr] = {}
+          result.ConsumedCapacity[indexAttr][data.IndexName] = {CapacityUnits: indexUnits}
+        }
+      }
+    }
+    cb(null, result)
+  })
+}
+
+function updateIndexes(store, table, existingItem, item, cb) {
+  if (!existingItem && !item) return cb()
+  var puts = [], deletes = []
+  ;['Local', 'Global'].forEach(function(indexType) {
+    var indexes = table[indexType + 'SecondaryIndexes'] || []
+    var actions = getIndexActions(indexes, existingItem, item, table)
+    puts = puts.concat(actions.puts.map(function(action) {
+      var indexDb = store.getIndexDb(indexType, table.TableName, action.index)
+      return indexDb.put.bind(indexDb, action.key, action.item)
+    }))
+    deletes = deletes.concat(actions.deletes.map(function(action) {
+      var indexDb = store.getIndexDb(indexType, table.TableName, action.index)
+      return indexDb.del.bind(indexDb, action.key)
+    }))
+  })
+
+  async.parallel(deletes, function(err) {
+    if (err) return cb(err)
+    async.parallel(puts, cb)
+  })
+}
+
+function getIndexActions(indexes, existingItem, item, table) {
+  var puts = [], deletes = [], tableKeys = table.KeySchema.map(function(key) { return key.AttributeName })
+  indexes.forEach(function(index) {
+    var indexKeys = index.KeySchema.map(function(key) { return key.AttributeName }), key = null
+
+    if (item && indexKeys.every(function(key) { return item[key] != null })) {
+      if (index.Projection.ProjectionType != 'ALL') {
+        var indexAttrs = indexKeys.concat(tableKeys, index.Projection.NonKeyAttributes || [])
+        item = indexAttrs.reduce(function(obj, attr) {
+          obj[attr] = item[attr]
+          return obj
+        }, Object.create(null))
+      }
+
+      key = createIndexKey(item, table, index.KeySchema)
+      puts.push({index: index.IndexName, key: key, item: item})
+    }
+
+    if (existingItem && indexKeys.every(function(key) { return existingItem[key] != null })) {
+      var existingKey = createIndexKey(existingItem, table, index.KeySchema)
+      if (existingKey != key) {
+        deletes.push({index: index.IndexName, key: existingKey})
+      }
+    }
+  })
+  return {puts: puts, deletes: deletes}
 }

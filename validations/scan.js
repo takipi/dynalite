@@ -1,4 +1,4 @@
-var validateAttributeValue = require('./index').validateAttributeValue
+var validations = require('./index')
 
 exports.types = {
   Limit: {
@@ -40,6 +40,10 @@ exports.types = {
       },
     },
   },
+  ConditionalOperator: {
+    type: 'String',
+    enum: ['OR', 'AND'],
+  },
   TotalSegments: {
     type: 'Integer',
     greaterThanOrEqual: 1,
@@ -55,73 +59,62 @@ exports.types = {
     type: 'Map',
     children: 'AttrStructure',
   },
+  IndexName: {
+    type: 'String',
+    regex: '[a-zA-Z0-9_.-]+',
+    lengthGreaterThanOrEqual: 3,
+    lengthLessThanOrEqual: 255,
+  },
+  FilterExpression: {
+    type: 'String',
+  },
+  ProjectionExpression: {
+    type: 'String',
+  },
+  ExpressionAttributeValues: {
+    type: 'Map',
+    children: 'AttrStructure',
+  },
+  ExpressionAttributeNames: {
+    type: 'Map',
+    children: 'String',
+  },
 }
 
 exports.custom = function(data) {
-  var msg = '', i
-  var lengths = {
-    NULL: 0,
-    NOT_NULL: 0,
-    EQ: 1,
-    NE: 1,
-    LE: 1,
-    LT: 1,
-    GE: 1,
-    GT: 1,
-    CONTAINS: 1,
-    NOT_CONTAINS: 1,
-    BEGINS_WITH: 1,
-    IN: [1],
-    BETWEEN: 2,
-  }
-  var types = {
-    EQ: ['S', 'N', 'B', 'SS', 'NS', 'BS'],
-    NE: ['S', 'N', 'B', 'SS', 'NS', 'BS'],
-    LE: ['S', 'N', 'B'],
-    LT: ['S', 'N', 'B'],
-    GE: ['S', 'N', 'B'],
-    GT: ['S', 'N', 'B'],
-    CONTAINS: ['S', 'N', 'B'],
-    NOT_CONTAINS: ['S', 'N', 'B'],
-    BEGINS_WITH: ['S', 'B'],
-    IN: ['S', 'N', 'B'],
-    BETWEEN: ['S', 'N', 'B'],
-  }
-  for (var key in data.ScanFilter) {
-    var comparisonOperator = data.ScanFilter[key].ComparisonOperator
-    var attrValList = data.ScanFilter[key].AttributeValueList || []
-    for (i = 0; i < attrValList.length; i++) {
-      msg = validateAttributeValue(attrValList[i])
-      if (msg) return msg
-    }
 
-    if ((typeof lengths[comparisonOperator] == 'number' && attrValList.length != lengths[comparisonOperator]) ||
-        (attrValList.length < lengths[comparisonOperator][0] || attrValList.length > lengths[comparisonOperator][1]))
-      return 'One or more parameter values were invalid: Invalid number of argument(s) for the ' +
-        comparisonOperator + ' ComparisonOperator'
+  var msg = validations.validateExpressionParams(data,
+    ['ProjectionExpression', 'FilterExpression'],
+    ['AttributesToGet', 'ScanFilter', 'ConditionalOperator'])
+  if (msg) return msg
 
-    if (types[comparisonOperator]) {
-      for (i = 0; i < attrValList.length; i++) {
-        if (!~types[comparisonOperator].indexOf(Object.keys(attrValList[i])[0]))
-          return 'One or more parameter values were invalid: ComparisonOperator ' + comparisonOperator +
-            ' is not valid for ' + Object.keys(attrValList[i])[0] + ' AttributeValue type'
-      }
-    }
+  if (data.AttributesToGet) {
+    msg = validations.findDuplicate(data.AttributesToGet)
+    if (msg) return 'One or more parameter values were invalid: Duplicate value in attribute name: ' + msg
   }
 
-  for (key in data.ExclusiveStartKey) {
-    msg = validateAttributeValue(data.ExclusiveStartKey[key])
+  msg = validations.validateConditions(data.ScanFilter)
+  if (msg) return msg
+
+  for (var key in data.ExclusiveStartKey) {
+    msg = validations.validateAttributeValue(data.ExclusiveStartKey[key])
     if (msg) return 'The provided starting key is invalid: ' + msg
   }
 
-  if (data.AttributesToGet) {
-    var attrs = Object.create(null)
-    for (i = 0; i < data.AttributesToGet.length; i++) {
-      if (attrs[data.AttributesToGet[i]])
-        return 'One or more parameter values were invalid: Duplicate value in attribute name: ' +
-          data.AttributesToGet[i]
-      attrs[data.AttributesToGet[i]] = true
+  if (data.Segment && data.TotalSegments == null) {
+    return 'The TotalSegments parameter is required but was not present in the request when Segment parameter is present'
+  }
+
+  if (data.TotalSegments) {
+    if (data.Segment == null) {
+      return 'The Segment parameter is required but was not present in the request when parameter TotalSegments is present'
+    }
+    if (data.Segment >= data.TotalSegments) {
+      return 'The Segment parameter is zero-based and must be less than parameter TotalSegments: ' +
+        'Segment: ' + data.Segment + ' is not less than TotalSegments: ' + data.TotalSegments
     }
   }
-}
 
+  msg = validations.validateExpressions(data, ['ProjectionExpression', 'FilterExpression'])
+  if (msg) return msg
+}
