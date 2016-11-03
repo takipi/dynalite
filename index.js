@@ -397,6 +397,9 @@ function createActionInFlight(action, data) {
   } else if (action == "deleteItem") {
     tableName = data.TableName;
     details = stringify(data.Key)
+  } else if (action == "scan") {
+    tableName = data.TableName;
+    details = stringify(data)
   } else {
     details = stringify(data);
   }
@@ -413,15 +416,6 @@ function logAction(action, data, preData, actionTimeMs) {
       if (action == "createTable") {
       } else if (action == "describeTable") {
         details = "status: " + data.Table.TableStatus;
-      } else if (action == "query") {
-      } else if (action == "getItem") {
-      } else if (action == "batchGetItem") {
-      } else if (action == "updateItem") {
-      } else {
-        // console.log("POST")
-        // console.log(action);
-        // console.log(data);
-        // console.log("END POST")
       }
     }
   } catch (e) {
