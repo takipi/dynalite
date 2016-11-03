@@ -1,6 +1,9 @@
-var bunyan = require('bunyan'),
-	fs = require('fs')
-
+var winston = require('winston'),
+	fs = require('fs'),
+	dateFormat = require('dateformat'),
+	util = require('util'),
+	pad = require('pad');
+	
 exports.createLogger = createLogger
 exports.getInstance = getInstance
 
@@ -14,11 +17,13 @@ var isOnRoids = false
 // Public
 function createLogger (name, defaultPath, opts) {
 	var level = opts.verbose ? opts.verbose : opts.sVerbose
+	
 	var preferedPath = opts.path ? opts.path : defaultPath // If we're not in-memory use the same directory for logs.
 	
 	var validatedLvl = validateLevel(level)
-	if (!validatedLvl)
-		return undefined
+	if (!validatedLvl) {
+		validatedLvl = "info"
+	}
 	
 	createLogDirectoryIfNeeded(preferedPath)
 	var fullPath = preferedPath + '/dynaLog/' + getLogFileName(name)
@@ -26,17 +31,40 @@ function createLogger (name, defaultPath, opts) {
 	
 	if (!instance)
 	{
-		instance = bunyan.createLogger({
-				name: name,
-				serializers: SERIALIZERS,
-				streams: [{
-					type: logType,
-					level: validatedLvl,
-					path: fullPath,
-					period: logPeriod
-				}]
-			}
-		)
+		var instance = new (winston.Logger)({
+			transports: [
+				new (winston.transports.File)({
+					timestamp: function() {
+						return Date.now();
+					},
+					formatter: function(options) {
+						var formattedTime = dateFormat(options.timestamp(), "yyyy-mm-dd h:MM:ss");
+						
+						var msg = util.format("%s %s %s", 
+							pad(formattedTime, 20),
+							pad(options.level.toUpperCase(), 6),
+							options.message);
+						
+						return msg
+					},
+					filename: fullPath,
+					json: false,
+					level: level
+				})
+			]
+		});
+		
+		// instance = bunyan.createLogger({
+		// 		name: name,
+		// 		serializers: SERIALIZERS,
+		// 		streams: [{
+		// 			type: logType,
+		// 			level: validatedLvl,
+		// 			path: fullPath,
+		// 			period: logPeriod
+		// 		}]
+		// 	}
+		// )
 		
 		console.log("Writing logs to - " + fullPath)
 	}

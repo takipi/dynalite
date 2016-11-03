@@ -3,12 +3,15 @@ var http = require('http'),
     fs = require('fs'),
     path = require('path'),
     url = require('url'),
+    util = require('util'),
+    pad = require('pad'),
+    stringify = require('node-stringify'),
     crypto = require('crypto'),
     crc32 = require('buffer-crc32'),
     validations = require('./validations'),
     db = require('./db'),
-    bunyan = require('./logger'),
-    stats = require('./stats')
+    dynaliteLogger = require('./logger'),
+    stats = require('./stats');
 
 var MAX_REQUEST_BYTES = 16 * 1024 * 1024
 var logger
@@ -26,7 +29,7 @@ function dynalite(options) {
   options = options || {}
   var server, stores = {}, requestHandler = httpHandler.bind(null, stores, options)
 
-  logger = bunyan.createLogger("dynalite_log", __dirname, options)
+  logger = dynaliteLogger.createLogger("dynalite_log", __dirname, options)
   statistics = stats.createStats()
 
   if (options.ssl) {
@@ -298,10 +301,10 @@ function httpHandler(stores, options, req, res) {
 
     var actionStartTime = new Date().getTime()
     
-    if (logger)
-    {
-      logger.trace({}, "[TIMER: " + timerId + "] going to " + action + " on " + logTableName)
-    }
+    // if (logger)
+    // {
+    //   logger.trace({}, "[TIMER: " + timerId + "] going to " + action + " on " + logTableName)
+    // }
 
     statistics.incCounter(action + "-" + logTableName)
 
@@ -319,17 +322,27 @@ function httpHandler(stores, options, req, res) {
       throw e
     }
 
+    var actionInFlight;
+    
+    try {
+      actionInFlight = createActionInFlight(action, data);
+    } catch (e) {
+      actionInFlight = {tableName:"error", data:stringify(e)};
+    }
+
     actions[action](store, data, function(err, data) {
       if (logger)
       {
         var actionTimeMs = new Date().getTime() - actionStartTime
-        logger.trace({}, "[TIMER: " + timerId + "] " + action + " on table " + logTableName + " took " + actionTimeMs + " ms")
+        // logger.trace({}, "[TIMER: " + timerId + "] " + action + " on table " + logTableName + " took " + actionTimeMs + " ms")
+        logAction(action, data, actionInFlight, actionTimeMs);
       }
 
       if (err && logger)
       {
         logger.error({exData: data}, "[TIMER: " + timerId + "] Error while trying to perform action: " + action + " on " + logTableName + " with error: " + err)
       }
+      
       if (err && err.statusCode)
       {
         return sendData(req, res, err.body, err.statusCode)
@@ -338,6 +351,99 @@ function httpHandler(stores, options, req, res) {
       sendData(req, res, data)
     })
   })
+}
+
+function createActionInFlight(action, data) {
+  if (!data) {
+    return {tableName:"", data:""};
+  }
+  
+  var tableName = "";
+  var details = "";
+  
+  if (action == "createTable") {
+    tableName = data.TableName;
+    details = stringify(data.KeySchema)
+  } else if (action == "describeTable") {
+    tableName = data.TableName;
+  } else if (action == "getItem") {
+    tableName = data.TableName;
+    details = stringify(data.Key);
+  } else if (action == "query") {
+    tableName = data.TableName;
+    details = stringify(data.KeyConditions);
+  } else if (action == "batchGetItem") {
+    if (Object.keys(data.RequestItems) == 1) {
+      tableName = Object.keys(data.RequestItems)[0];
+    } else {
+      tableName = Object.keys(data.RequestItems);
+    }
+    
+    details = stringify(data.RequestItems);
+  } else if (action == "updateItem") {
+    tableName = data.TableName;
+    details = stringify(data.Key) + stringify(data.AttributeUpdates)
+  } else if (action == "putItem") {
+    tableName = data.TableName;
+    details = stringify(data.Item);
+  } else if (action == "batchWriteItem") {
+    if (Object.keys(data.RequestItems) == 1) {
+      tableName = Object.keys(data.RequestItems)[0];
+    } else {
+      tableName = Object.keys(data.RequestItems);
+    }
+    
+    details = stringify(data.RequestItems);
+  } else if (action == "deleteItem") {
+    tableName = data.TableName;
+    details = stringify(data.Key)
+  } else {
+    details = stringify(data);
+  }
+  
+  return {tableName:tableName, details:details}
+}
+
+function logAction(action, data, preData, actionTimeMs) {
+  var details = preData.details;
+  var tableName = preData.tableName;
+  
+  try {
+    if (data) {
+      if (action == "createTable") {
+      } else if (action == "describeTable") {
+        details = "status: " + data.Table.TableStatus;
+      } else if (action == "query") {
+      } else if (action == "getItem") {
+      } else if (action == "batchGetItem") {
+      } else if (action == "updateItem") {
+      } else {
+        // console.log("POST")
+        // console.log(action);
+        // console.log(data);
+        // console.log("END POST")
+      }
+    }
+  } catch (e) {
+    tableName = "error";
+    details = stringify(e);
+  }
+  
+  if (!tableName) {
+    tableName = "null";
+  }
+  
+  if (!details) {
+    details = "";
+  }
+
+  var formattedMessage = util.format("%s\t%s\t%s\t%s", 
+    pad(actionTimeMs + "ms", 8),
+    pad(action, 20),
+    pad(tableName, 45),
+    details);
+  
+  logger.info(formattedMessage);
 }
 
 function getStore(stores, options, action, data)
