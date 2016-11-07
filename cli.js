@@ -26,6 +26,15 @@ if (argv.help) {
   ].join('\n'))
 }
 
+process.on('uncaughtException', function (exception) {
+  console.log("an Uncaught Exception occurred");
+  console.log(exception);
+});
+
+process.on('unhandledRejection', (reason, p) => {
+    console.log("Unhandled Rejection at: Promise ", p, " reason: ", reason);
+});
+
 var server = require('./index.js')(argv).listen(argv.port || 4567, function() {
   var address = server.address(), protocol = argv.ssl ? 'https' : 'http'
   // eslint-disable-next-line no-console
