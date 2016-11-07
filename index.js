@@ -30,6 +30,15 @@ function dynalite(options) {
   var server, stores = {}, requestHandler = httpHandler.bind(null, stores, options)
 
   logger = dynaliteLogger.createLogger("dynalite_log", __dirname, options)
+  
+  setInterval(function() {
+    try{
+      logger.info("Process Memroy Stats: " + stringify(process.memoryUsage()));
+    } catch (e) {
+      console.log("ERROR " + e);
+    }
+  }, 2000);
+  
   statistics = stats.createStats()
 
   if (options.ssl) {
