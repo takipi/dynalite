@@ -102,7 +102,6 @@ function sendData(req, res, data, statusCode) {
 }
 
 function httpHandler(stores, options, req, res) {
-	throw new Error("bla")
 	var body
 	req.on('error', function(err) { throw err })
 	req.on('data', function(data) {
