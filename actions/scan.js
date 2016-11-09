@@ -1,6 +1,5 @@
 var once = require('once'),
-    db = require('../db'),
-    logger = require('../logger')
+    db = require('../db');
 
 module.exports = function scan(store, data, cb) {
   cb = once(cb)

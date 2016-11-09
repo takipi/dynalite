@@ -29,6 +29,7 @@ if (argv.help) {
 process.on('uncaughtException', function (exception) {
   console.log("an Uncaught Exception occurred");
   console.log(exception);
+  process.exit(125);
 });
 
 process.on('unhandledRejection', (reason, p) => {
@@ -39,4 +40,4 @@ var server = require('./index.js')(argv).listen(argv.port || 4567, function() {
   var address = server.address(), protocol = argv.ssl ? 'https' : 'http'
   // eslint-disable-next-line no-console
   console.log('Listening at %s://%s:%s', protocol, address.address, address.port)
-})
+});

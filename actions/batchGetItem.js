@@ -1,7 +1,6 @@
 var async = require('async'),
     getItem = require('./getItem'),
-    db = require('../db'),
-    logger = require('../logger')
+    db = require('../db');
 
 module.exports = function batchGetItem(store, data, cb) {
   var requests = {}

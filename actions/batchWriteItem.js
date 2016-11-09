@@ -1,8 +1,7 @@
 var async = require('async'),
     putItem = require('./putItem'),
     deleteItem = require('./deleteItem'),
-    db = require('../db'),
-    logger = require('../logger')
+    db = require('../db');
 
 module.exports = function batchWriteItem(store, data, cb) {
   var actions = []
