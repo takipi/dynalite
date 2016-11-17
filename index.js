@@ -406,8 +406,12 @@ function createActionInFlight(action, data) {
 		details = stringify(data.Key)
 	} else if (action == "scan") {
 		tableName = data.TableName;
-		details = stringify(data)
+		details = stringify(data);
 	} else {
+		if (data.TableName) {
+			tableName = data.TableName;
+		}
+		
 		details = stringify(data);
 	}
 	
@@ -419,10 +423,8 @@ function logAction(action, data, preData, actionTimeMs) {
 	var tableName = preData.tableName;
 	
 	try {
-		if (data) {
-			if (action == "describeTable") {
-				details = "status: " + data.Table.TableStatus;
-			}
+		if ((data) && (action == "describeTable") && (data.Table)) {
+			details = "status: " + data.Table.TableStatus;
 		}
 	} catch (e) {
 		details = stringify(e);
