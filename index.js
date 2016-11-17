@@ -342,7 +342,6 @@ function httpHandler(stores, options, req, res) {
 			if (logger)
 			{
 				var actionTimeMs = new Date().getTime() - actionStartTime
-				// logger.trace({}, "[TIMER: " + timerId + "] " + action + " on table " + logTableName + " took " + actionTimeMs + " ms")
 				logAction(action, data, actionInFlight, actionTimeMs);
 			}
 
