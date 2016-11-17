@@ -33,7 +33,12 @@ function dynalite(options) {
 	
 	if (options.memoryStats) {
 		setInterval(function() {
-			logger.info("Process Memroy Stats: " + stringify(process.memoryUsage()));
+			try {
+				logger.info("Process Memroy Stats: " + stringify(process.memoryUsage()));
+			} catch (e) {
+				logger.error("Error printing Memroy Stats " + e);
+			}
+			
 		}, options.memoryStats * 1000);
 	}
 	
@@ -416,13 +421,11 @@ function logAction(action, data, preData, actionTimeMs) {
 	
 	try {
 		if (data) {
-			if (action == "createTable") {
-			} else if (action == "describeTable") {
+			if (action == "describeTable") {
 				details = "status: " + data.Table.TableStatus;
 			}
 		}
 	} catch (e) {
-		tableName = "error";
 		details = stringify(e);
 	}
 	
