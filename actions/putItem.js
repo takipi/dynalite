@@ -1,5 +1,4 @@
-var db = require('../db'),
-    logger = require('../logger')
+var db = require('../db');
 
 module.exports = function putItem(store, data, cb) {
   store.getTable(data.TableName, function(err, table) {

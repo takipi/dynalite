@@ -32,7 +32,10 @@
     "memdown": "^1.1.2",
     "minimist": "^1.2.0",
     "once": "^1.3.3",
-    "bunyan": "^1.8.1"
+    "winston": "*",
+    "dateformat":"*",
+    "pad":"*",
+    "node-stringify":"*"
   },
   "optionalDependencies": {
     "leveldown": "^1.4.4"
