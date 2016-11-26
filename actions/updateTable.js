@@ -1,10 +1,6 @@
-var db = require('../db'),
-    logger = require('../logger')
+var db = require('../db');
 
 module.exports = function updateTable(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Updating table - " + data.TableName)
-  
   var key = data.TableName, tableDb = store.tableDb
 
   tableDb.lock(key, function(release) {
@@ -65,10 +61,11 @@ module.exports = function updateTable(store, data, cb) {
           })
 
           tableDb.put(key, table, function(err) {
+            // eslint-disable-next-line no-console
             if (err && !/Database is not open/.test(err)) console.error(err.stack || err)
           })
 
-        }, store.updateTableMs)
+        }, store.options.updateTableMs)
 
         cb(null, {TableDescription: table})
       })

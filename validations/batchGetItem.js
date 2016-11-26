@@ -1,4 +1,5 @@
-var validateAttributeValue = require('./index').validateAttributeValue
+var validations = require('./index'),
+    db = require('../db')
 
 exports.types = {
   ReturnConsumedCapacity: {
@@ -34,32 +35,53 @@ exports.types = {
           children: 'String',
         },
         ConsistentRead: 'Boolean',
+        ProjectionExpression: {
+          type: 'String',
+        },
+        ExpressionAttributeNames: {
+          type: 'Map',
+          children: 'String',
+        },
       },
     },
   },
 }
 
 exports.custom = function(data) {
-  var numReqs = 0, table, i, key, msg, attrs
-  for (table in data.RequestItems) {
-    for (i = 0; i < data.RequestItems[table].Keys.length; i++) {
-      for (key in data.RequestItems[table].Keys[i]) {
-        msg = validateAttributeValue(data.RequestItems[table].Keys[i][key])
+  var numReqs = 0
+
+  for (var table in data.RequestItems) {
+    var tableData = data.RequestItems[table]
+
+    var msg = validations.validateExpressionParams(tableData, ['ProjectionExpression'], ['AttributesToGet'])
+    if (msg) return msg
+
+    var seenKeys = Object.create(null)
+    for (var i = 0; i < tableData.Keys.length; i++) {
+      var key = tableData.Keys[i]
+
+      for (var attr in key) {
+        msg = validations.validateAttributeValue(key[attr])
         if (msg) return msg
       }
+
+      // TODO: this is unnecessarily expensive
+      var keyStr = Object.keys(key).sort().map(function(attr) { return db.toRangeStr(key[attr]) }).join('/')
+      if (seenKeys[keyStr])
+        return 'Provided list of item keys contains duplicates'
+      seenKeys[keyStr] = true
+
       numReqs++
       if (numReqs > 100)
         return 'Too many items requested for the BatchGetItem call'
     }
-    if (data.RequestItems[table].AttributesToGet) {
-      attrs = Object.create(null)
-      for (i = 0; i < data.RequestItems[table].AttributesToGet.length; i++) {
-        if (attrs[data.RequestItems[table].AttributesToGet[i]])
-          return 'One or more parameter values were invalid: Duplicate value in attribute name: ' +
-            data.RequestItems[table].AttributesToGet[i]
-        attrs[data.RequestItems[table].AttributesToGet[i]] = true
-      }
+
+    if (tableData.AttributesToGet) {
+      msg = validations.findDuplicate(tableData.AttributesToGet)
+      if (msg) return 'One or more parameter values were invalid: Duplicate value in attribute name: ' + msg
     }
+
+    msg = validations.validateExpressions(tableData)
+    if (msg) return msg
   }
 }
-

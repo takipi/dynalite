@@ -1,85 +1,91 @@
 var once = require('once'),
-    db = require('../db'),
-    logger = require('../logger')
+    db = require('../db');
 
 module.exports = function scan(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Scanning table - " + data.TableName)
-  
   cb = once(cb)
 
   store.getTable(data.TableName, function(err, table) {
     if (err) return cb(err)
 
-    var opts = {}, vals, scannedCount = 0, itemDb = store.getItemDb(data.TableName),
-        size = 0, capacitySize = 0, exclusiveLexiKey, lastItem
+    var keySchema = table.KeySchema, startKeyNames = keySchema.map(function(key) { return key.AttributeName }),
+      fetchFromItemDb = false, isLocal
 
-    if (data.TotalSegments > 1) {
-      if (data.Segment > 0)
-        opts.start = ('00' + Math.ceil(4096 * data.Segment / data.TotalSegments).toString(16)).slice(-3)
-      opts.end = ('00' + (Math.ceil(4096 * (data.Segment + 1) / data.TotalSegments) - 1).toString(16)).slice(-3) + '\xff'
+    if (data.IndexName) {
+      var index = db.traverseIndexes(table, function(attr, type, index, isGlobal) {
+        if (index.IndexName == data.IndexName) {
+          isLocal = !isGlobal
+          return index
+        }
+      })
+      if (index == null) {
+        if (data.ExclusiveStartKey) {
+          return cb(db.validationError('The provided starting key is invalid'))
+        }
+        return cb(db.validationError('The table does not have the specified index: ' + data.IndexName))
+      }
+      if (!isLocal && data.ConsistentRead) {
+        return cb(db.validationError('Consistent reads are not supported on global secondary indexes'))
+      }
+      keySchema = index.KeySchema
+      fetchFromItemDb = data.Select == 'ALL_ATTRIBUTES' && index.Projection.ProjectionType != 'ALL'
+      keySchema.forEach(function(key) { if (!~startKeyNames.indexOf(key.AttributeName)) startKeyNames.push(key.AttributeName) })
+    }
+
+    if (data.ExclusiveStartKey && Object.keys(data.ExclusiveStartKey).length != startKeyNames.length) {
+      return data.IndexName ? cb(db.validationError('The provided starting key is invalid')) :
+        cb(db.validationError('The provided starting key is invalid: The provided key element does not match the schema'))
+    }
+
+    if (data.IndexName && data.ExclusiveStartKey) {
+      err = db.traverseKey(table, keySchema, function(attr, type, isHash) {
+        if (!data.ExclusiveStartKey[attr]) {
+          return db.validationError('The provided starting key is invalid')
+        }
+        return db.validateKeyPiece(data.ExclusiveStartKey, attr, type, isHash)
+      })
+      if (err) return cb(err)
+    }
+
+    if (fetchFromItemDb && !isLocal) {
+      return cb(db.validationError('One or more parameter values were invalid: ' +
+        'Select type ALL_ATTRIBUTES is not supported for global secondary index ' +
+        data.IndexName + ' because its projection type is not ALL'))
     }
 
     if (data.ExclusiveStartKey) {
-      if (table.KeySchema.some(function(schemaPiece) { return !data.ExclusiveStartKey[schemaPiece.AttributeName] })) {
-        return cb(db.validationError('The provided starting key is invalid: ' +
-          'The provided key element does not match the schema'))
+      var tableStartKey = table.KeySchema.reduce(function(obj, attr) {
+        obj[attr.AttributeName] = data.ExclusiveStartKey[attr.AttributeName]
+        return obj
+      }, {})
+      if ((err = db.validateKey(tableStartKey, table)) != null) {
+        return cb(db.validationError('The provided starting key is invalid: ' + err.message))
       }
-      exclusiveLexiKey = db.validateKey(data.ExclusiveStartKey, table)
-      if (data.TotalSegments > 1 && (exclusiveLexiKey < opts.start || exclusiveLexiKey > opts.end)) {
+    }
+
+    if (data.TotalSegments > 1) {
+      if (data.Segment > 0)
+        var hashStart = ('00' + Math.ceil(4096 * data.Segment / data.TotalSegments).toString(16)).slice(-3)
+      var hashEnd = ('00' + (Math.ceil(4096 * (data.Segment + 1) / data.TotalSegments) - 1).toString(16)).slice(-3) + '~'
+    }
+
+    if (data.ExclusiveStartKey) {
+      var startKey = db.createIndexKey(data.ExclusiveStartKey, table, keySchema)
+
+      if (data.TotalSegments > 1 && (startKey < hashStart || startKey > hashEnd)) {
         return cb(db.validationError('The provided starting key is invalid: Invalid ExclusiveStartKey. ' +
           'Please use ExclusiveStartKey with correct Segment. ' +
           'TotalSegments: ' + data.TotalSegments + ' Segment: ' + data.Segment))
       }
-      opts.start = exclusiveLexiKey + '\x00'
+
+      hashStart = startKey
     }
 
-    vals = db.lazy(itemDb.createValueStream(opts), cb)
+    if ((err = db.validateKeyPaths((data._projection || {}).nestedPaths, table)) != null) return cb(err)
 
-    vals = vals.takeWhile(function(val) {
-      if (scannedCount >= data.Limit || size > 1042000) return false
+    if ((err = db.validateKeyPaths((data._filter || {}).nestedPaths, table)) != null) return cb(err)
 
-      scannedCount++
-      size += db.itemSize(val, true)
+    var opts = {limit: data.Limit ? data.Limit + 1 : -1, gt: hashStart, lt: hashEnd}
 
-      // TODO: Combine this with above
-      if (~['TOTAL', 'INDEXES'].indexOf(data.ReturnConsumedCapacity))
-        capacitySize += db.itemSize(val)
-
-      lastItem = val
-
-      return true
-    })
-
-    if (data.ScanFilter)
-      vals = vals.filter(function(val) { return db.matchesFilter(val, data.ScanFilter) })
-
-    if (data.AttributesToGet) {
-      vals = vals.map(function(val) {
-        return data.AttributesToGet.reduce(function(item, attr) {
-          if (val[attr] != null) item[attr] = val[attr]
-          return item
-        }, {})
-      })
-    }
-
-    vals.join(function(items) {
-      var result = {Count: items.length, ScannedCount: scannedCount}
-      if (data.Select != 'COUNT') result.Items = items
-      if ((data.Limit && data.Limit <= scannedCount) || size > 1042000) {
-        result.LastEvaluatedKey = table.KeySchema.reduce(function(key, schemaPiece) {
-          key[schemaPiece.AttributeName] = lastItem[schemaPiece.AttributeName]
-          return key
-        }, {})
-      }
-      if (~['TOTAL', 'INDEXES'].indexOf(data.ReturnConsumedCapacity))
-        result.ConsumedCapacity = {
-          CapacityUnits: Math.ceil(capacitySize / 1024 / 4) * 0.5,
-          TableName: data.TableName,
-          Table: data.ReturnConsumedCapacity == 'INDEXES' ?
-            {CapacityUnits: Math.ceil(capacitySize / 1024 / 4) * 0.5} : undefined,
-        }
-      cb(null, result)
-    })
+    db.queryTable(store, table, data, opts, isLocal, fetchFromItemDb, startKeyNames, cb)
   })
 }

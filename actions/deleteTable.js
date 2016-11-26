@@ -1,8 +1,6 @@
-var logger = require('../logger')
+var async = require('async')
 
 module.exports = function deleteTable(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Deleting table - " + data.TableName)
 
   var key = data.TableName, tableDb = store.tableDb
 
@@ -21,19 +19,29 @@ module.exports = function deleteTable(store, data, cb) {
     }
 
     table.TableStatus = 'DELETING'
+
+    var deletes = [store.deleteItemDb.bind(store, key)]
+    ;['Local', 'Global'].forEach(function(indexType) {
+      var indexes = table[indexType + 'SecondaryIndexes'] || []
+      deletes = deletes.concat(indexes.map(function(index) {
+        return store.deleteIndexDb.bind(store, indexType, table.TableName, index.IndexName)
+      }))
+    })
+
     delete table.GlobalSecondaryIndexes
 
     tableDb.put(key, table, function(err) {
       if (err) return cb(err)
 
-      store.deleteItemDb(key, function(err) {
+      async.parallel(deletes, function(err) {
         if (err) return cb(err)
 
         setTimeout(function() {
           tableDb.del(key, function(err) {
+            // eslint-disable-next-line no-console
             if (err && !/Database is not open/.test(err)) console.error(err.stack || err)
           })
-        }, store.deleteTableMs)
+        }, store.options.deleteTableMs)
 
         cb(null, {TableDescription: table})
       })

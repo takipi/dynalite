@@ -1,15 +1,12 @@
-var db = require('../db'),
-    logger = require('../logger')
+var db = require('../db');
 
 module.exports = function putItem(store, data, cb) {
-  if (logger.getInstance())
-    logger.getInstance().trace({exData: data}, "Putting item in - " + data.TableName)
-  
   store.getTable(data.TableName, function(err, table) {
     if (err) return cb(err)
 
-    var key = db.validateItem(data.Item, table), itemDb = store.getItemDb(data.TableName)
-    if (key instanceof Error) return cb(key)
+    if ((err = db.validateItem(data.Item, table)) != null) return cb(err)
+
+    var itemDb = store.getItemDb(data.TableName), key = db.createKey(data.Item, table)
 
     itemDb.lock(key, function(release) {
       cb = release(cb)
@@ -24,17 +21,15 @@ module.exports = function putItem(store, data, cb) {
         if (existingItem && data.ReturnValues == 'ALL_OLD')
           returnObj.Attributes = existingItem
 
-        if (~['TOTAL', 'INDEXES'].indexOf(data.ReturnConsumedCapacity))
-          returnObj.ConsumedCapacity = {
-            CapacityUnits: Math.max(db.capacityUnits(existingItem), db.capacityUnits(data.Item)),
-            TableName: data.TableName,
-            Table: data.ReturnConsumedCapacity == 'INDEXES' ?
-              {CapacityUnits: Math.max(db.capacityUnits(existingItem), db.capacityUnits(data.Item))} : undefined,
-          }
+        returnObj.ConsumedCapacity = db.addConsumedCapacity(data, false, existingItem, data.Item)
 
-        itemDb.put(key, data.Item, function(err) {
+        db.updateIndexes(store, table, existingItem, data.Item, function(err) {
           if (err) return cb(err)
-          cb(null, returnObj)
+
+          itemDb.put(key, data.Item, function(err) {
+            if (err) return cb(err)
+            cb(null, returnObj)
+          })
         })
       })
     })

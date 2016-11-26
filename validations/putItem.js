@@ -1,6 +1,5 @@
-var db = require('../db'),
-    validateAttributeValue = require('./index').validateAttributeValue,
-    validateAttributeConditions = require('./index').validateAttributeConditions
+var validations = require('./index'),
+    db = require('../db')
 
 exports.types = {
   ReturnConsumedCapacity: {
@@ -49,22 +48,38 @@ exports.types = {
     type: 'String',
     enum: ['SIZE', 'NONE'],
   },
+  ConditionExpression: {
+    type: 'String',
+  },
+  ExpressionAttributeValues: {
+    type: 'Map',
+    children: 'AttrStructure',
+  },
+  ExpressionAttributeNames: {
+    type: 'Map',
+    children: 'String',
+  },
 }
 
-exports.custom = function(data) {
-  var msg
+exports.custom = function(data, store) {
+
+  var msg = validations.validateExpressionParams(data, ['ConditionExpression'], ['Expected'])
+  if (msg) return msg
+
   for (var key in data.Item) {
-    msg = validateAttributeValue(data.Item[key])
+    msg = validations.validateAttributeValue(data.Item[key])
     if (msg) return msg
   }
-
-  msg = validateAttributeConditions(data)
-  if (msg) return msg
 
   if (data.ReturnValues && data.ReturnValues != 'ALL_OLD' && data.ReturnValues != 'NONE')
     return 'ReturnValues can only be ALL_OLD or NONE'
 
-  if (db.itemSize(data.Item) > db.MAX_SIZE)
+  if (db.itemSize(data.Item) > store.options.maxItemSize)
     return 'Item size has exceeded the maximum allowed size'
-}
 
+  msg = validations.validateAttributeConditions(data)
+  if (msg) return msg
+
+  msg = validations.validateExpressions(data)
+  if (msg) return msg
+}
