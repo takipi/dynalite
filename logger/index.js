@@ -11,7 +11,7 @@ exports.getInstance = getInstance
 var instance;
 
 // Public
-function createLogger (name, defaultPath, opts) {
+function createLogger (defaultPath, opts) {
 	if (!opts.verbose) {
 		instance = {
 			info:function() {},
@@ -25,7 +25,7 @@ function createLogger (name, defaultPath, opts) {
 	
 	var dataDirectory = opts.path ? opts.path : defaultPath // If we're not in-memory use the same directory for logs.
 	var logsDirectory = getValidLogDirectory(dataDirectory);
-	var fullPath = path.join(logsDirectory, getLogFileName(name));
+	var fullPath = path.join(logsDirectory, getLogFileName(opts.logFileName || "dynalite_log"));
 
 	instance = new (winston.Logger)({
 		transports: [

@@ -29,7 +29,7 @@ function dynalite(options) {
 	options = options || {}
 	var server, stores = {}, requestHandler = httpHandler.bind(null, stores, options)
 
-	logger = dynaliteLogger.createLogger("dynalite_log", __dirname, options)
+	logger = dynaliteLogger.createLogger(__dirname, options)
 	
 	if (options.memoryStats) {
 		setInterval(function() {
