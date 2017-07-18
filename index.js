@@ -42,7 +42,7 @@ function dynalite(options) {
 		}, options.memoryStats * 1000);
 	}
 	
-	statistics = stats.createStats(options.statsdIp)
+	statistics = stats.createStats(options)
 
 	if (options.ssl) {
 		options.key = options.key || fs.readFileSync(path.join(__dirname, 'ssl', 'server-key.pem'))

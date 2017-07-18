@@ -6,7 +6,9 @@ function createStats (statsdIp)
 {
   var counters = {}
   var lastData = null
-  var statsdIp = statsdIp
+  var statsdIp = options.statsdIp;
+  var statsdPrefix = options.statsdPrefix;
+  var counterPrefix = options.nodeName ? options.nodeName + "." : "";
 
   if (statsdIp) {
      var SDC = require('statsd-client');
@@ -18,10 +20,14 @@ function createStats (statsdIp)
     try {
       if (counters.hasOwnProperty(counterName))
         counters[counterName]++
-	if (sdc) {sdc.increment(counterName);}
+	if (sdc) {
+	    sdc.increment(counterPrefix + "." + counterName);
+	} 
       else
         counters[counterName] = 1
-        if (sdc) {sdc.counter(counterName, 1);}
+        if (sdc) {
+	   sdc.counter(counterPrefix + "." + counterName, 1);
+	} 
     }
     catch (err) {
       if (logger.getInstance())
