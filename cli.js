@@ -15,6 +15,7 @@ if (argv.help) {
     '--port <port>         The port to listen on (default: 4567)',
     '--path <path>         The path to use for the LevelDB store (in-memory by default)',
     '--ssl                 Enable SSL for the web server (default: false)',
+    '--nodeName    	   The node name',
     '--statsdIp            Ip of the Statsd collector)',
     '--statsdPrefix        Prefix of the statsd metrics',
     '--createTableMs <ms>  Amount of time tables stay in CREATING state (default: 500)',
