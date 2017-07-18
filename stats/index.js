@@ -2,17 +2,26 @@ var logger = require('../logger')
 
 exports.createStats = createStats
 
-function createStats ()
+function createStats (statsdIp)
 {
   var counters = {}
   var lastData = null
+  var statsdIp = statsdIp
+
+  if (statsdIp) {
+     var SDC = require('statsd-client');
+     sdc = new SDC({host: statsdIp});
+     console.log('Initilize statsd client with the dest ip of %s', statsdIp)
+  }
 
   function incCounter (counterName) {
     try {
       if (counters.hasOwnProperty(counterName))
         counters[counterName]++
+	if (sdc) {sdc.increment(counterName);}
       else
         counters[counterName] = 1
+        if (sdc) {sdc.counter(counterName, 1);}
     }
     catch (err) {
       if (logger.getInstance())
