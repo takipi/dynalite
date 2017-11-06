@@ -45,8 +45,22 @@ function create(options) {
   if (options.maxItemSizeKb == null) options.maxItemSizeKb = exports.MAX_SIZE / 1024
   options.maxItemSize = options.maxItemSizeKb * 1024
 
-  var db = levelup(options.path || '/does/not/matter', options.path ? options : {db: memdown}),
-      sublevelDb = sublevel(db),
+    var db;
+    
+    if (options.jdbc) {
+      var jdbcdown = require('./jdbcdown');
+      db = levelup(new jdbcdown(options.jdbc));
+    }
+    else if (options.path) {
+      var leveldown = require('leveldown');
+      db = levelup(leveldown(options.path));
+    }
+    else
+    {
+      db = levelup(memdown());
+    }
+    
+    var sublevelDb = sublevel(db),
       tableDb = sublevelDb.sublevel('table', {valueEncoding: 'json'}),
       subDbs = Object.create(null)
 
