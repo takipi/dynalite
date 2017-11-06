@@ -9,7 +9,6 @@ var url = require('url');
 // Todo: break to one meta-table for tables and separate tables for each dynamo table.
 // Currently, everything is on one table
 var TABLENAME = 'takipi_jdbcdown';
-var debug = require('debug')('jdbcdown');
 var util = require('./encoding');
 module.exports = JDBCdown;
 
