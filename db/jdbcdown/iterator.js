@@ -138,7 +138,7 @@ Iterator.prototype._end = function(callback) {
 
 Iterator.prototype.buildSQL = function () {
   var self = this;
-  var sql = "select K, V from " + this.tableName + " where ";
+  var sql = "select K, V from " + this._options.table + " where ";
   var args = [];
   var statement = {sql: sql, args: args};
 

@@ -49,7 +49,7 @@ function create(options) {
     
     if (options.jdbc) {
       var jdbcdown = require('./jdbcdown');
-  var db = levelup(options.path || '/does/not/matter', options.path ? {} : {db: memdown}),
+      db = levelup(new jdbcdown(options.jdbc, options.jdbcUser, options.jdbcPassword, options.table));
     }
     else if (options.path) {
       var leveldown = require('leveldown');

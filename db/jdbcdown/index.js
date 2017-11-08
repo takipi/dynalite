@@ -8,24 +8,24 @@ var Promise = require('bluebird');
 var url = require('url');
 // Todo: break to one meta-table for tables and separate tables for each dynamo table.
 // Currently, everything is on one table
-var TABLENAME = 'takipi_jdbcdown';
 var util = require('./encoding');
 module.exports = JDBCdown;
 
+// db pool shared by all different instances
+var pool;
+
 inherits(JDBCdown, AbstractLevelDOWN);
 
-function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword) {
+function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName) {
     AbstractLevelDOWN.call(this, jdbcUrl);
 
-    var pool = connection(jdbcUrl, jdbcUser, jdbcPassword);
+    initPool(jdbcUrl, jdbcUser, jdbcPassword);
     this.pool = pool;
-    this.tablename = TABLENAME;
+    this.tableName = tableName;;
 }
 
 JDBCdown.prototype._open = function(options, callback) {
-    this.tablename = TABLENAME;
-
-    var tableCreateStr = 'CREATE TABLE IF NOT EXISTS ' + this.tablename + '(' +
+    var tableCreateStr = 'CREATE TABLE IF NOT EXISTS ' + this.tableName + '(' +
         'K VARCHAR(3072) NOT NULL, V BLOB, PRIMARY KEY(K)) ' +
         'ENGINE=InnoDB';
 
@@ -63,7 +63,7 @@ JDBCdown.prototype._get = function(key, options, cb) {
     }
     key = util.encode(key);
 
-    this.pool.execute("SELECT V FROM " + this.tablename + " WHERE K = ?", [key], function(err, res, rows) {
+    this.pool.execute("SELECT V FROM " + this.tableName + " WHERE K = ?", [key], function(err, res, rows) {
         if (err) {
             return cb(err.stack);
         }
@@ -93,18 +93,17 @@ JDBCdown.prototype._get = function(key, options, cb) {
 }
 
 JDBCdown.prototype._put = function(key, value, opt, cb) {
-    var self = this;
     value = util.encode(value, true);
     key = util.encode(key);
 
-    insertHelper(this.pool, cb, key, value);
+    insertHelper(this.pool, cb, key, value, this.tableName);
 }
 
 
 JDBCdown.prototype._del = function(key, opt, cb) {
     var self = this;
     key = util.encode(key);
-    deleteHelper(this.pool, cb, key);
+    deleteHelper(this.pool, cb, key, this.tableName);
 }
 
 function unique(array) {
@@ -118,17 +117,18 @@ function unique(array) {
 }
 
 JDBCdown.prototype._batch = function(array, options, callback) {
+    var self = this;
     var inserts = 0;
       this.pool.beginTransaction(function(err, tran) {
           return Promise.all(unique(array).map(function(item) {
               var key = util.encode(item.key);
 
               if (item.type === 'del') {
-                  return deleteHelper(tran, function() {}, key);
+                  return deleteHelper(tran, function() {}, key, self.tableName);
               } else {
                   var value = util.encode(item.value, true);
                   inserts++;
-                  return insertHelper(tran, function() {}, key, value);
+                  return insertHelper(tran, function() {}, key, value, self.tableName);
               }
           })).then(function() {
               tran.commit(function(err) {
@@ -151,9 +151,16 @@ JDBCdown.prototype.iterator = function(options) {
     return new Iter(this, options);
 };
 
-function connection(url, user, password) {
-    console.log('connecting...')
-    return new jdbc.Database({
+function initPool(url, user, password) {
+    
+    if (pool)
+    {
+      return;
+    }
+    
+    console.log('connecting to ' + url + ' with user: ' + user);
+    
+    pool = new jdbc.Database({
         url: url,
         properties: {
             user: user,
@@ -163,10 +170,12 @@ function connection(url, user, password) {
         maxConnections: 30,
         idleTimeout: 60
     });
+    
+    console.log('successfully created pool');
 }
 
-function insertHelper(db, cb, key, value) {
-    db.execute("INSERT INTO " + TABLENAME + " (K, V) VALUES (?,?) ON DUPLICATE KEY UPDATE V=?", [key, value, value], function(err) {
+function insertHelper(db, cb, key, value, tableName) {
+    db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) ON DUPLICATE KEY UPDATE V=?", [key, value, value], function(err) {
         if (err) {
             console.log(err)
         }
@@ -174,8 +183,8 @@ function insertHelper(db, cb, key, value) {
     });
 }
 
-function deleteHelper(db, cb, key, value) {
-    db.execute("DELETE FROM " + TABLENAME + " where K=?", [key], function(err) {
+function deleteHelper(db, cb, key, value, tableName) {
+    db.execute("DELETE FROM " + tableName + " where K=?", [key], function(err) {
         if (err) {
             console.log(err);
         }
