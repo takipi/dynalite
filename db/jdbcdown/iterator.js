@@ -28,6 +28,8 @@ function Iterator(db, options, cb) {
   options = options || {};
   this._order = !options.reverse;
   this._options = options;
+  this.table = db.table;
+  
   names.forEach(function (i) {
     goodOptions(options, i);
   });
@@ -138,7 +140,7 @@ Iterator.prototype._end = function(callback) {
 
 Iterator.prototype.buildSQL = function () {
   var self = this;
-  var sql = "select K, V from " + this._options.table + " where ";
+  var sql = "select K, V from " + this.table + " where ";
   var args = [];
   var statement = {sql: sql, args: args};
 
