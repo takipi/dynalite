@@ -21,7 +21,7 @@ function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName) {
 
     initPool(jdbcUrl, jdbcUser, jdbcPassword);
     this.pool = pool;
-    this.tableName = tableName;;
+    this.tableName = tableName;
 }
 
 JDBCdown.prototype._open = function(options, callback) {
@@ -183,7 +183,7 @@ function insertHelper(db, cb, key, value, tableName) {
     });
 }
 
-function deleteHelper(db, cb, key, value, tableName) {
+function deleteHelper(db, cb, key, tableName) {
     db.execute("DELETE FROM " + tableName + " where K=?", [key], function(err) {
         if (err) {
             console.log(err);
