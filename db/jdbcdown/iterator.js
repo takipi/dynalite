@@ -75,9 +75,11 @@ function Iterator(db, options, cb) {
   // best to use an actual stream, or add a limit to fetched rows
   db.pool.execute(statement.sql, statement.args,
     function(err, result, rows) {
+      if (err) {
+        console.error(err);
+      }
       var ended =false;
-      if ((!rows) || (rows.length == 0))
-      {
+      if ((!rows) || (rows.length == 0)) {
         __stream.end();
       }
       else
@@ -199,8 +201,7 @@ Iterator.prototype.buildSQL = function () {
   }
 
   if (this._limit > 0) {
-    statement.sql = statement.sql + " limit ?";
-     statement.args.push(this._limit);
+    statement.sql = statement.sql + " limit " + this._limit;
   }
 
   return statement;
@@ -208,7 +209,8 @@ Iterator.prototype.buildSQL = function () {
 
 function appendWhere(statement, condition, appendee)
 {
-  statement.sql += (condition + " '" + util.decode(appendee) + "' AND ");
+  statement.sql += (condition + " ? AND ");
+  statement.args.push(util.encode(appendee));
 }
 
 function appendOrderBy(statement, bool) {

@@ -65,6 +65,7 @@ JDBCdown.prototype._get = function(key, options, cb) {
 
     this.pool.execute("SELECT V FROM " + this.tableName + " WHERE K = ?", [key], function(err, res, rows) {
         if (err) {
+            console.error(err);
             return cb(err.stack);
         }
         if (rows === undefined) {
@@ -86,7 +87,7 @@ JDBCdown.prototype._get = function(key, options, cb) {
                 cb(null, decodedVal);
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             cb(new Error('NotFound'));
         }
     });
@@ -120,6 +121,9 @@ JDBCdown.prototype._batch = function(array, options, callback) {
     var self = this;
     var inserts = 0;
       this.pool.beginTransaction(function(err, tran) {
+          if (err) {
+            console.error(err);
+          }
           return Promise.all(unique(array).map(function(item) {
               var key = util.encode(item.key);
 
@@ -177,7 +181,7 @@ function initPool(url, user, password) {
 function insertHelper(db, cb, key, value, tableName) {
     db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) ON DUPLICATE KEY UPDATE V=?", [key, value, value], function(err) {
         if (err) {
-            console.log(err)
+            console.error(err)
         }
         cb();
     });
@@ -186,7 +190,7 @@ function insertHelper(db, cb, key, value, tableName) {
 function deleteHelper(db, cb, key, tableName) {
     db.execute("DELETE FROM " + tableName + " where K=?", [key], function(err) {
         if (err) {
-            console.log(err);
+            console.error(err);
         }
 
         cb();
