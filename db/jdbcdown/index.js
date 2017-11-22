@@ -26,11 +26,15 @@ function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName) {
 
 JDBCdown.prototype._open = function(options, callback) {
     var tableCreateStr = 'CREATE TABLE IF NOT EXISTS ' + this.tableName + '(' +
-        'K VARCHAR(3072) NOT NULL, V BLOB, PRIMARY KEY(K)) ' +
+        'K VARCHAR(767) NOT NULL, V BLOB, PRIMARY KEY(K)) ' +
         'ENGINE=InnoDB';
 
     this.pool.execute(tableCreateStr,
         function(err, result) {
+            if (err) {
+                console.error(err);
+            }
+            
             callback();
         });
 }
@@ -66,7 +70,7 @@ JDBCdown.prototype._get = function(key, options, cb) {
     this.pool.execute("SELECT V FROM " + this.tableName + " WHERE K = ?", [key], function(err, res, rows) {
         if (err) {
             console.error(err);
-            return cb(err.stack);
+            return cb(new Error("Error occurred"));
         }
         if (rows === undefined) {
             return cb(new Error('NotFound'));
