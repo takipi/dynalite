@@ -25,16 +25,10 @@ function goto_dynalite_home()
 
 function main()
 {
-	local dynalite_options=$1
-	local jdbc_connection_string=$2
-	local jdbc_user=$3
-	local jdbc_password=$4
-	
 	local trireme_classpath=$(generate_trireme_classpath)
 	
 	echo "About to run: "
-	echo trireme cli.js $dynalite_options \
-		--jdbc $jdbc_connection_string --jdbcUser $jdbc_user --jdbcPassword $jdbc_password
+	echo trireme cli.js $@
 	echo "Trireme classpath is: $trireme_classpath"
 	
 	export TRIREME_CLASSPATH="$trireme_classpath"
@@ -43,8 +37,7 @@ function main()
 		exit 1
 	fi
 	
-	trireme cli.js $dynalite_options \
-		--jdbc $jdbc_connection_string --jdbcUser $jdbc_user --jdbcPassword $jdbc_password
+	trireme cli.js $@
 }
 
 main $@
