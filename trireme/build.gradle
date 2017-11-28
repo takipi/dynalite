@@ -20,11 +20,13 @@ distributions {
 }
 
 task copyTar(dependsOn: distTar) {
-	if (rootProject.hasProperty("tarTargetFile")) {
-		def tarFile ="$buildDir/distributions/${project.name}.tar"
-		
-		println "Copying $tarFile to $tarTargetFile"
-		
-		ant.copy(file:tarFile, tofile:tarTargetFile)
+	doLast {
+		if (rootProject.hasProperty("tarTargetFile")) {
+			def tarFile ="$buildDir/distributions/${project.name}.tar"
+			
+			println "Copying $tarFile to $tarTargetFile"
+			
+			ant.copy(file:tarFile, tofile:tarTargetFile)
+		}
 	}
 }
