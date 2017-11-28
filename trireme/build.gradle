@@ -1,0 +1,30 @@
+apply plugin: "java"
+apply plugin: "distribution"
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	compile "mysql:mysql-connector-java:5.1.6"
+}
+
+distributions {
+	main {
+		contents {
+			from(configurations.compile.resolve()) {
+				into("libs")
+			}
+		}
+	}
+}
+
+task copyTar(dependsOn: distTar) {
+	if (rootProject.hasProperty("tarTargetFile")) {
+		def tarFile ="$buildDir/distributions/${project.name}.tar"
+		
+		println "Copying $tarFile to $tarTargetFile"
+		
+		ant.copy(file:tarFile, tofile:tarTargetFile)
+	}
+}
