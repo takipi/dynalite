@@ -3,6 +3,8 @@ var crypto = require('crypto'),
     async = require('async'),
     Lazy = require('lazy'),
     levelup = require('levelup'),
+    encode = require('encoding-down'),
+    leveldown = require('leveldown'),
     memdown = require('memdown'),
     sublevel = require('level-sublevel'),
     Lock = require('lock'),
@@ -45,7 +47,7 @@ function create(options) {
   if (options.maxItemSizeKb == null) options.maxItemSizeKb = exports.MAX_SIZE / 1024
   options.maxItemSize = options.maxItemSizeKb * 1024
 
-  var db = levelup(options.path || '/does/not/matter', options.path ? options : {db: memdown}),
+  var db = levelup(encode(leveldown(options.path || '/does/not/matter')), options.path ? options : {db: memdown}),
       sublevelDb = sublevel(db),
       tableDb = sublevelDb.sublevel('table', {valueEncoding: 'json'}),
       subDbs = Object.create(null)
