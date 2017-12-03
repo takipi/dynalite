@@ -3,8 +3,6 @@ var crypto = require('crypto'),
     async = require('async'),
     Lazy = require('lazy'),
     levelup = require('levelup'),
-    encode = require('encoding-down'),
-    leveldown = require('leveldown'),
     memdown = require('memdown'),
     sublevel = require('level-sublevel'),
     Lock = require('lock'),
@@ -47,8 +45,22 @@ function create(options) {
   if (options.maxItemSizeKb == null) options.maxItemSizeKb = exports.MAX_SIZE / 1024
   options.maxItemSize = options.maxItemSizeKb * 1024
 
-  var db = levelup(encode(leveldown(options.path || '/does/not/matter')), options.path ? options : {db: memdown}),
-      sublevelDb = sublevel(db),
+    var db;
+    
+    if (options.jdbc) {
+      var jdbcdown = require('./jdbcdown');
+      db = levelup(new jdbcdown(options.jdbc, options.jdbcUser, options.jdbcPassword, options.table));
+    }
+    else if (options.path) {
+      var leveldown = require('leveldown');
+      db = levelup(leveldown(options.path));
+    }
+    else
+    {
+      db = levelup(memdown());
+    }
+    
+    var sublevelDb = sublevel(db),
       tableDb = sublevelDb.sublevel('table', {valueEncoding: 'json'}),
       subDbs = Object.create(null)
 
@@ -204,7 +216,8 @@ function validateUpdates(attributeUpdates, expressionUpdates, table) {
         }
       }
     } else {
-      actualType = attributeUpdates[attr] ? Object.keys(attributeUpdates[attr].Value)[0] : null
+      actualType = attributeUpdates[attr] && attributeUpdates[attr].Value ?
+        Object.keys(attributeUpdates[attr].Value)[0] : null
     }
     if (actualType != null && actualType != type) {
       return validationError('One or more parameter values were invalid: ' +
@@ -909,19 +922,19 @@ function updateIndexes(store, table, existingItem, item, cb) {
 function getIndexActions(indexes, existingItem, item, table) {
   var puts = [], deletes = [], tableKeys = table.KeySchema.map(function(key) { return key.AttributeName })
   indexes.forEach(function(index) {
-    var indexKeys = index.KeySchema.map(function(key) { return key.AttributeName }), key = null
+    var indexKeys = index.KeySchema.map(function(key) { return key.AttributeName }), key = null, itemPieces = item
 
     if (item && indexKeys.every(function(key) { return item[key] != null })) {
       if (index.Projection.ProjectionType != 'ALL') {
         var indexAttrs = indexKeys.concat(tableKeys, index.Projection.NonKeyAttributes || [])
-        item = indexAttrs.reduce(function(obj, attr) {
+        itemPieces = indexAttrs.reduce(function(obj, attr) {
           obj[attr] = item[attr]
           return obj
         }, Object.create(null))
       }
 
-      key = createIndexKey(item, table, index.KeySchema)
-      puts.push({index: index.IndexName, key: key, item: item})
+      key = createIndexKey(itemPieces, table, index.KeySchema)
+      puts.push({index: index.IndexName, key: key, item: itemPieces})
     }
 
     if (existingItem && indexKeys.every(function(key) { return existingItem[key] != null })) {

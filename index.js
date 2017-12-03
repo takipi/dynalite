@@ -453,7 +453,7 @@ function getStore(stores, options, action, data)
 	
 	if (options.flat_layout)
 	{
-		table = ""
+		table = "";
 	}
 	else
 	{
@@ -472,6 +472,7 @@ function getStore(stores, options, action, data)
 		}
 		
 		newOptions.path = newOptions.path + "/" + table
+    newOptions.table = table;
 		store = db.create(newOptions);
 	}
 	

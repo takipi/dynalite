@@ -26,6 +26,9 @@ if (argv.help) {
   ].join('\n'))
 }
 
+// If we're PID 1, eg in a docker container, SIGINT won't end the process as usual
+if (process.pid == 1) process.on('SIGINT', process.exit)
+
 process.on('uncaughtException', function (exception) {
   console.log("an Uncaught Exception occurred");
   console.log(exception);
