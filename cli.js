@@ -32,6 +32,7 @@ if (process.pid == 1) process.on('SIGINT', process.exit)
 process.on('uncaughtException', function (exception) {
   console.log("an Uncaught Exception occurred");
   console.log(exception);
+  console.log(exception.stack);
   process.exit(125);
 });
 
