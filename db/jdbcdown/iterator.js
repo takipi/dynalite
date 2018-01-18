@@ -71,25 +71,42 @@ function Iterator(db, options, cb) {
 
   var __stream = this._stream;
 
-  // TODO: trireme-jdbc has executeStream, which doesn't seem to work.
-  // best to use an actual stream, or add a limit to fetched rows
+  // TODO: trireme-jdbc has executeStream, which doesn't seem to work with limit <= 10.
+  // So while the bug is fixed, we use the execute function
   db.pool.execute(statement.sql, statement.args,
     function(err, result, rows) {
       if (err) {
         console.error(err);
+        return;
       }
+      
       var ended =false;
       if ((!rows) || (rows.length == 0)) {
         __stream.end();
+        return;
       }
-      else
-      {
-        rows.forEach(function(row) {
-          __stream.write(row, function(){if (ended){__stream.end();}});
-        });
-      }
-      ended = true;
+      
+      var rowCount = 0;
+      
+      rows.forEach(function(row) {
+        rowCount++;
+        
+        try
+        {
+          __stream.write(row, function(){
+            if (rowCount >= rows.length){
+              __stream.end();
+            }
+          });
+        }
+        catch (e)
+        {
+          console.error(e);
+          console.error(e.stack);
+          return;
+        }
     });
+  });
 }
 
 inherits(Iterator, AbstractIterator);
@@ -136,7 +153,6 @@ Iterator.prototype._next = function(callback) {
 }
 
 Iterator.prototype._end = function(callback) {
-  this._stream.end()
   callback()
 }
 
