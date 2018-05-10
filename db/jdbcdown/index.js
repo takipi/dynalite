@@ -11,16 +11,12 @@ var url = require('url');
 var util = require('./encoding');
 module.exports = JDBCdown;
 
-// db pool shared by all different instances
-var pool;
-
 inherits(JDBCdown, AbstractLevelDOWN);
 
 function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName) {
     AbstractLevelDOWN.call(this, jdbcUrl);
 
-    initPool(jdbcUrl, jdbcUser, jdbcPassword);
-    this.pool = pool;
+    this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName);
     this.tableName = tableName;
 }
 
@@ -159,16 +155,14 @@ JDBCdown.prototype.iterator = function(options) {
     return new Iter(this, options);
 };
 
-function initPool(url, user, password) {
+function initPool(url, user, password, tableName) {
+    var parts = url.split(";");
+    parts[0] = parts[0] + "_" + tableName;
+    url = parts.join(";");
     
-    if (pool)
-    {
-      return;
-    }
+    console.log('connecting to ' + url + ' with user: ' + user + ', table: ' + tableName);
     
-    console.log('connecting to ' + url + ' with user: ' + user);
-    
-    pool = new jdbc.Database({
+    var pool = new jdbc.Database({
         url: url,
         properties: {
             user: user,
@@ -180,6 +174,8 @@ function initPool(url, user, password) {
     });
     
     console.log('successfully created pool');
+    
+    return pool;
 }
 
 function insertHelper(db, cb, key, value, tableName) {
