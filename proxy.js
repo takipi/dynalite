@@ -12,7 +12,10 @@ var dynamiteCount = argv.dynamite;
 var server = http.createServer(function(req, res) {
   var tableName = req.headers[TABLE_NAME_HEADER];
 
-  proxy.web(req, res, { target: 'http://127.0.0.1:' + calcPort(port, tableName, dynamiteCount) });
+  proxy.web(req, res, { target: 'http://127.0.0.1:' + calcPort(port, tableName, dynamiteCount) },
+  	function(error) {
+  		console.error(error);
+  	});
 });
 
 console.log("Proxy listening on port " + argv.port);
@@ -46,10 +49,14 @@ tableNamesMapping["onprem_request_stats_pending"] = 10;
 tableNamesMapping["default"] = 0;
 
 calcPort = function(port, tableName, dynamiteCount) {
-	let mapping = tableNamesMapping["default"];
+	let mapping;
 
 	if (tableName) {
 		mapping = tableNamesMapping[tableName.toLowerCase()];
+	}
+
+	if (!mapping) {
+		mapping = tableNamesMapping["default"];
 	}
 	
 	let offset = mapping % dynamiteCount + 1;
