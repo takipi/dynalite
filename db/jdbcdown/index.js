@@ -11,7 +11,7 @@ var url = require('url');
 var util = require('./encoding');
 module.exports = JDBCdown;
 
-var poolMap = new Map();
+var poolMap = {};
 
 inherits(JDBCdown, AbstractLevelDOWN);
 
@@ -173,7 +173,7 @@ function initPool(url, user, password, tableName, connectionPerTable) {
         url = parts.join(";");  
     }
 
-    var pool = poolMap.get(keyStore);
+    var pool = poolMap[keyStore];
     
     if(pool)
     {
@@ -193,7 +193,7 @@ function initPool(url, user, password, tableName, connectionPerTable) {
         idleTimeout: 60
     });
     
-    poolMap.set(keyStore, pool);
+    poolMap[keyStore] = pool;
 
     console.log('successfully created pool');
     
