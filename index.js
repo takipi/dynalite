@@ -472,7 +472,7 @@ function getStore(stores, options, action, data)
 		}
 		
 		newOptions.path = newOptions.path + "/" + table
-    newOptions.table = table;
+		newOptions.table = table;
 		store = db.create(newOptions);
 	}
 	
