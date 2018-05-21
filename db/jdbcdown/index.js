@@ -15,10 +15,10 @@ var poolMap = {};
 
 inherits(JDBCdown, AbstractLevelDOWN);
 
-function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, connectionPerTable) {
+function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable) {
     AbstractLevelDOWN.call(this, jdbcUrl);
 
-    this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName, connectionPerTable);
+    this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable);
     this.tableName = tableName;
 }
 
@@ -157,11 +157,11 @@ JDBCdown.prototype.iterator = function(options) {
     return new Iter(this, options);
 };
 
-function initPool(url, user, password, tableName, connectionPerTable) {
+function initPool(url, user, password, tableName, dbPerTable) {
     
     var keyStore;
 
-    if (connectionPerTable == "false")
+    if (dbPerTable)
     {
         keyStore = "all";
     }
