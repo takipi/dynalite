@@ -11,16 +11,14 @@ var url = require('url');
 var util = require('./encoding');
 module.exports = JDBCdown;
 
-// db pool shared by all different instances
-var pool;
+var poolMap = {};
 
 inherits(JDBCdown, AbstractLevelDOWN);
 
-function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName) {
+function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable) {
     AbstractLevelDOWN.call(this, jdbcUrl);
 
-    initPool(jdbcUrl, jdbcUser, jdbcPassword);
-    this.pool = pool;
+    this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable);
     this.tableName = tableName;
 }
 
@@ -159,14 +157,30 @@ JDBCdown.prototype.iterator = function(options) {
     return new Iter(this, options);
 };
 
-function initPool(url, user, password) {
+function initPool(url, user, password, tableName, dbPerTable) {
     
-    if (pool)
+    var keyStore;
+
+    if (!dbPerTable)
     {
-      return;
+        keyStore = "all";
     }
+    else 
+    {
+        keyStore = tableName;
+        var parts = url.split(";");
+        parts[0] = parts[0] + "_" + tableName;
+        url = parts.join(";");  
+    }
+
+    var pool = poolMap[keyStore];
     
-    console.log('connecting to ' + url + ' with user: ' + user);
+    if(pool)
+    {
+        return pool;
+    }
+
+    console.log('connecting to ' + url + ' with user: ' + user + ', table: ' + tableName);
     
     pool = new jdbc.Database({
         url: url,
@@ -179,7 +193,11 @@ function initPool(url, user, password) {
         idleTimeout: 60
     });
     
+    poolMap[keyStore] = pool;
+
     console.log('successfully created pool');
+    
+    return pool;
 }
 
 function insertHelper(db, cb, key, value, tableName) {
