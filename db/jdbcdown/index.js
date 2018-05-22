@@ -161,7 +161,7 @@ function initPool(url, user, password, tableName, dbPerTable) {
     
     var keyStore;
 
-    if (dbPerTable)
+    if (!dbPerTable)
     {
         keyStore = "all";
     }
