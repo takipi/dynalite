@@ -3,7 +3,7 @@ const TABLE_NAME_HEADER = "x-table-name";
 var argv = require('minimist')(process.argv.slice(2))
 
 var fs = require("fs");
-var content = fs.readFileSync(argv.map);
+var content = fs.readFileSync(argv.tablesmappingpath);
 var tableNamesMapping = JSON.parse(content);
 
 var http = require('http'),
