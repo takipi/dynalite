@@ -44,4 +44,4 @@ echo "$!" >> "$temp_pid_file"
 nohup ./cli.js --dbPerTable --port 4004 --path "$temp_dir/4004" &
 echo "$!" >> "$temp_pid_file"
 
-./proxy.js --port 4000 --dynamite 4 --tablesMappingPath $temp_mapping_file
+./dynamite-proxy.js --port 4000 --dynamite 4 --tablesMappingPath $temp_mapping_file
