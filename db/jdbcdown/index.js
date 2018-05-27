@@ -141,8 +141,9 @@ JDBCdown.prototype._batch = function(array, options, callback) {
                   if (err) {
                       console.log(err)
                   }
+
+                    callback();
               });
-              callback();
           });
       });
 }
