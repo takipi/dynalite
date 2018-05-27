@@ -21,6 +21,7 @@ if (argv.help) {
     '--maxItemSizeKb <kb>  Maximum item size (default: 400)',
     '--verbose <level>     Write logs (TRACE/DEBUG/INFO/WARN/ERROR/FATAL, default off)',
     '--sVerbose <level>    Steroid Verbose, Write logs with extra data (Same level options)',
+    '--dbPerTable          Using separate database for each table (only for jdbc down)',
     '',
     'Report bugs at github.com/mhart/dynalite/issues',
   ].join('\n'))
