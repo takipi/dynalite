@@ -9,7 +9,7 @@ const argv = require('minimist')(process.argv.slice(2));
 if (argv.help) {
 	return console.log([
 		'',
-		'Usage: node proxy.js [options]',
+		'Usage: node dynamite-proxy.js [options]',
 		'',
 		'A proxy http server for the real dynalite instance',
 		'',
