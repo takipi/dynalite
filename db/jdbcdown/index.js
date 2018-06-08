@@ -190,7 +190,7 @@ function initPool(url, user, password, tableName, dbPerTable) {
             password: password,
         },
         minConnections: 1,
-        maxConnections: 30,
+        maxConnections: 4,
         idleTimeout: 60
     });
     
