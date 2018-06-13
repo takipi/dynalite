@@ -48,7 +48,8 @@ try {
 	return console.log(e);
 }
 
-var proxy = httpProxy.createProxyServer({});
+var agent = new http.Agent({ keepAlive: true });
+var proxy = httpProxy.createProxyServer({agent: agent});
 
 var server = http.createServer(function(req, res) {
 	var tableName = req.headers[TABLE_NAME_HEADER];
