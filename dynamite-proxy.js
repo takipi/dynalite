@@ -3,6 +3,7 @@
 const TABLE_NAME_HEADER = "x-table-name";
 const fs = require("fs");
 const http = require('http');
+const httpProxy = require('http-proxy');
 const argv = require('minimist')(process.argv.slice(2));
 
 if (argv.help) {
@@ -47,15 +48,31 @@ try {
 	return console.log(e);
 }
 
-const requestHandler = (request, response) => {
-        var tableName = request.headers[TABLE_NAME_HEADER];
-        var targetInstancePort = calcPortByTableName(port + 1, tableName, dynamiteCount);
-        var targetUrl = 'http://127.0.0.1:' + targetInstancePort;
+var agent = new http.Agent({ keepAlive: true });
+var proxy = httpProxy.createProxyServer({agent: agent});
 
-        response.writeHead(307, {
-                'Location': targetUrl
-        });
-        response.end();
+// We use redirect instead of proxy in order to avoid the amount of connections
+//	between the proxy and dynalite.
+//
+var useRedirect = true;
+
+const requestHandler = (request, response) => {
+	var tableName = request.headers[TABLE_NAME_HEADER];
+	var targetInstancePort = calcPortByTableName(port + 1, tableName, dynamiteCount);
+	var targetUrl = 'http://127.0.0.1:' + targetInstancePort;
+
+	if (useRedirect) {
+		response.writeHead(307, {
+			'Location': targetUrl
+		});
+		response.end();
+	} else {
+		proxy.web(request, response, { target: targetUrl }, function(error) {
+			res.statusCode = 500;
+			res.write(error.toString());
+			res.end();
+		});
+	}
 }
 
 const server = http.createServer(requestHandler)
