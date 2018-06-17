@@ -48,19 +48,34 @@ try {
 	return console.log(e);
 }
 
-var proxy = httpProxy.createProxyServer({});
+var agent = new http.Agent({ keepAlive: true });
+var proxy = httpProxy.createProxyServer({agent: agent});
 
-var server = http.createServer(function(req, res) {
-	var tableName = req.headers[TABLE_NAME_HEADER];
+// We use redirect instead of proxy in order to avoid the amount of connections
+//	between the proxy and dynalite.
+//
+var useRedirect = true;
+
+const requestHandler = (request, response) => {
+	var tableName = request.headers[TABLE_NAME_HEADER];
 	var targetInstancePort = calcPortByTableName(port + 1, tableName, dynamiteCount);
 	var targetUrl = 'http://127.0.0.1:' + targetInstancePort;
 
-	proxy.web(req, res, { target: targetUrl }, function(error) {
-		res.statusCode = 500;
-		res.write(error.toString());
-		res.end();
-	});
-});
+	if (useRedirect) {
+		response.writeHead(307, {
+			'Location': targetUrl
+		});
+		response.end();
+	} else {
+		proxy.web(request, response, { target: targetUrl }, function(error) {
+			res.statusCode = 500;
+			res.write(error.toString());
+			res.end();
+		});
+	}
+}
+
+const server = http.createServer(requestHandler)
 
 server.listen(argv.port);
 
