@@ -15,10 +15,10 @@ var poolMap = {};
 
 inherits(JDBCdown, AbstractLevelDOWN);
 
-function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable) {
+function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable, connectionPoolMaxSize) {
     AbstractLevelDOWN.call(this, jdbcUrl);
 
-    this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable);
+    this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable, connectionPoolMaxSize);
     this.tableName = tableName;
 }
 
@@ -158,7 +158,7 @@ JDBCdown.prototype.iterator = function(options) {
     return new Iter(this, options);
 };
 
-function initPool(url, user, password, tableName, dbPerTable) {
+function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxSize) {
     
     var keyStore;
 
@@ -180,6 +180,11 @@ function initPool(url, user, password, tableName, dbPerTable) {
     {
         return pool;
     }
+    
+    if (!connectionPoolMaxSize)
+    {
+        connectionPoolMaxSize = dbPerTable ? 10 : 30;
+    }
 
     console.log('connecting to ' + url + ' with user: ' + user + ', table: ' + tableName);
     
@@ -190,7 +195,7 @@ function initPool(url, user, password, tableName, dbPerTable) {
             password: password,
         },
         minConnections: 1,
-        maxConnections: dbPerTable ? 10 : 30,
+        maxConnections: connectionPoolMaxSize,
         idleTimeout: 60
     });
     

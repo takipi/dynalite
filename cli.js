@@ -22,6 +22,7 @@ if (argv.help) {
     '--verbose <level>     Write logs (TRACE/DEBUG/INFO/WARN/ERROR/FATAL, default off)',
     '--sVerbose <level>    Steroid Verbose, Write logs with extra data (Same level options)',
     '--dbPerTable          Using separate database for each table (only for jdbc down)',
+    '--connectionPoolMaxSize Maximum size of jdbc connection pool (only for jdbc down)',
     '',
     'Report bugs at github.com/mhart/dynalite/issues',
   ].join('\n'))
