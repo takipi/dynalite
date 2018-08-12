@@ -15,10 +15,10 @@ var poolMap = {};
 
 inherits(JDBCdown, AbstractLevelDOWN);
 
-function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable) {
+function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable, connectionPoolMaxSize) {
     AbstractLevelDOWN.call(this, jdbcUrl);
 
-    this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable);
+    this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable, connectionPoolMaxSize);
     this.tableName = tableName;
 }
 
@@ -158,7 +158,7 @@ JDBCdown.prototype.iterator = function(options) {
     return new Iter(this, options);
 };
 
-function initPool(url, user, password, tableName, dbPerTable) {
+function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxSize) {
     
     var keyStore;
 
@@ -173,29 +173,57 @@ function initPool(url, user, password, tableName, dbPerTable) {
         parts[0] = parts[0] + "_" + tableName;
         url = parts.join(";");  
     }
-
+    
     var pool = poolMap[keyStore];
     
     if(pool)
     {
         return pool;
     }
-
-    console.log('connecting to ' + url + ' with user: ' + user + ', table: ' + tableName);
     
-    pool = new jdbc.Database({
-        url: url,
-        properties: {
-            user: user,
-            password: password,
-        },
-        minConnections: 1,
-        maxConnections: dbPerTable ? 10 : 30,
-        idleTimeout: 60
+    if (!connectionPoolMaxSize)
+    {
+        connectionPoolMaxSize = dbPerTable ? 10 : 30;
+    }
+    
+    var extraVendorProperties = {};
+    
+    if (url.includes("jdbc:mysql")) {
+        extraVendorProperties = {
+            useSSL: false,
+            createDatabaseIfNotExist: true,
+            connectTimeout: 15000,
+            useLocalSessionState: true,
+            useLocalTransactionState: true,
+            cachePrepStmts: true,
+            useServerPrepStmts: true,
+            prepStmtCacheSize: 250,
+            prepStmtCacheSqlLimit: 2048,
+            rewriteBatchedStatements: true,
+            autoReconnect: true
+        }
+    }
+    
+    var vendorProperties = Object.assign({}, extraVendorProperties, {
+        user: user,
+        password: password
     });
     
+    var jdbcProps = {
+        url: url,
+        properties: vendorProperties,
+        minConnections: 0,
+        maxConnections: connectionPoolMaxSize,
+        idleTimeout: 600
+    };
+    
+    console.log('Connecting to ' + url + ' with user: ' + user + ', table: ' + tableName);
+    console.log("Configuration: " + JSON.stringify(jdbcProps));
+    
+    pool = new jdbc.Database(jdbcProps);
+    
     poolMap[keyStore] = pool;
-
+    
     console.log('successfully created pool');
     
     return pool;

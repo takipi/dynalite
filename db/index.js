@@ -49,7 +49,8 @@ function create(options) {
     
     if (options.jdbc) {
       var jdbcdown = require('./jdbcdown');
-      db = levelup(new jdbcdown(options.jdbc, options.jdbcUser, options.jdbcPassword, options.table, options.dbPerTable));
+      db = levelup(new jdbcdown(options.jdbc, options.jdbcUser, options.jdbcPassword, 
+          options.table, options.dbPerTable, options.connectionPoolMaxSize));
     }
     else if (options.path) {
       var leveldown = require('leveldown');
