@@ -11,6 +11,7 @@ var url = require('url');
 var util = require('./encoding');
 module.exports = JDBCdown;
 
+var isPostgres
 var poolMap = {};
 
 inherits(JDBCdown, AbstractLevelDOWN);
@@ -18,18 +19,27 @@ inherits(JDBCdown, AbstractLevelDOWN);
 function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable, connectionPoolMaxSize) {
     AbstractLevelDOWN.call(this, jdbcUrl);
 
+    isPostgres = jdbcUrl.indexOf("postgres") != -1
     this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable, connectionPoolMaxSize);
     this.tableName = tableName;
 }
 
 JDBCdown.prototype._open = function(options, callback) {
+    var blobType = isPostgres ? "BYTEA" : "BLOB";
+    var textType = isPostgres ? "text" : "VARCHAR(767)"
+    
     var tableCreateStr = 'CREATE TABLE IF NOT EXISTS ' + this.tableName + '(' +
-        'K VARCHAR(767) NOT NULL, V BLOB, PRIMARY KEY(K)) ' +
-        'ENGINE=InnoDB';
+        'K ' + textType + ' NOT NULL, V ' + blobType + ', CONSTRAINT ' + this.tableName + '_PK PRIMARY KEY(K)) ';
+    
+    if (!isPostgres)
+    {
+        tableCreateStr += 'ENGINE=InnoDB';
+    }
 
     this.pool.execute(tableCreateStr,
         function(err, result) {
             if (err) {
+                console.log("Error creating table");
                 console.error(err);
             }
             
@@ -65,8 +75,20 @@ JDBCdown.prototype._get = function(key, options, cb) {
     }
     key = util.encode(key);
 
-    this.pool.execute("SELECT V FROM " + this.tableName + " WHERE K = ?", [key], function(err, res, rows) {
+    var query;
+    
+    if (isPostgres)
+    {
+        query = "SELECT convert_from(V::bytea, 'UTF-8') FROM " + this.tableName + " WHERE K = ?"
+    }
+    else
+    {
+        query = "SELECT V FROM " + this.tableName + " WHERE K = ?"
+    }
+
+    this.pool.execute(query, [key], function(err, res, rows) {
         if (err) {
+            console.log("Error getting " + query);
             console.error(err);
             return cb(new Error("Error occurred"));
         }
@@ -230,12 +252,28 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
 }
 
 function insertHelper(db, cb, key, value, tableName) {
-    db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) ON DUPLICATE KEY UPDATE V=?", [key, value, value], function(err) {
-        if (err) {
-            console.error(err)
-        }
-        cb();
-    });
+    
+    if (isPostgres)
+    {
+        db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) ON CONFLICT ON CONSTRAINT " +
+                tableName + "_PK DO UPDATE SET V=?", [key, value, value], function(err) {
+            if (err) {
+                console.log("Error inserting " + key + " to " + tableName);
+                console.error(err)
+            }
+            cb();
+        });
+    }
+    else
+    {
+        db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) ON DUPLICATE KEY UPDATE V=?", [key, value, value], function(err) {
+            if (err) {
+                console.log("Error inserting " + key + " to " + tableName);
+                console.error(err)
+            }
+            cb();
+        });
+    }
 }
 
 function deleteHelper(db, cb, key, tableName) {
