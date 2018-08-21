@@ -9,6 +9,8 @@ var url = require('url');
 // Todo: break to one meta-table for tables and separate tables for each dynamo table.
 // Currently, everything is on one table
 var util = require('./encoding');
+var hex = require('bytewise/encoding/hex');
+var sql = require('./sql-flavour');
 module.exports = JDBCdown;
 
 var poolMap = {};
@@ -20,12 +22,13 @@ function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable, connec
 
     this.pool = initPool(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable, connectionPoolMaxSize);
     this.tableName = tableName;
+    sql.setSqlFlavourByJdbcUrl(jdbcUrl);
 }
 
 JDBCdown.prototype._open = function(options, callback) {
     var tableCreateStr = 'CREATE TABLE IF NOT EXISTS ' + this.tableName + '(' +
-        'K VARCHAR(767) NOT NULL, V BLOB, PRIMARY KEY(K)) ' +
-        'ENGINE=InnoDB';
+        'K VARCHAR(767) NOT NULL, V ' + sql.blobType() + ', CONSTRAINT ' + this.tableName + '_PK PRIMARY KEY(K)) ' +
+        sql.getDBEngineDefinition();
 
     this.pool.execute(tableCreateStr,
         function(err, result) {
@@ -79,8 +82,7 @@ JDBCdown.prototype._get = function(key, options, cb) {
 
         try {
             rows.forEach(function(row) {
-                var value = row.V;
-
+                var value = row[sql.fieldName('v')];
                 if (value === undefined || value === null) {
                     return cb(new Error('NotFound'));
                 }
@@ -230,7 +232,7 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
 }
 
 function insertHelper(db, cb, key, value, tableName) {
-    db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) ON DUPLICATE KEY UPDATE V=?", [key, value, value], function(err) {
+    db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) " + sql.sqlForOnDuplicateKey(tableName + "_PK") + " V=?", [String(key), value, value], function(err) {
         if (err) {
             console.error(err)
         }

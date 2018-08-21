@@ -1,6 +1,11 @@
 'use strict';
+var sql = require('./sql-flavour');
 
 function encode(value, isValue) {
+  if (!sql.isUsingEncoding())
+  {
+    return value ? String(value) : '';
+  }
   if (isValue && !value) {
     value = new Buffer('');
   }
@@ -14,6 +19,10 @@ function encode(value, isValue) {
 }
 
 function decode(value, asBuffer) {
+  if (!sql.isUsingEncoding())
+  {
+    return value ? String(value) : '';
+  }
   if (asBuffer) {
     return value;
   } else {
