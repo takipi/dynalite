@@ -9,7 +9,6 @@ var url = require('url');
 // Todo: break to one meta-table for tables and separate tables for each dynamo table.
 // Currently, everything is on one table
 var util = require('./encoding');
-var hex = require('bytewise/encoding/hex');
 var sql = require('./sql-flavour');
 module.exports = JDBCdown;
 
