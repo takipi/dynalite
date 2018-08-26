@@ -3,6 +3,7 @@ var inherits = require('inherits');
 var AbstractIterator = require('abstract-leveldown/abstract-iterator');
 var util = require('./encoding');
 var PassThrough = require('stream').PassThrough;
+var sql = require('./sql-flavour');
 
 function goodOptions(opts, name) {
   if (!(name in opts)) {
@@ -142,11 +143,11 @@ Iterator.prototype._next = function(callback) {
     this._stream.once('end', onEnd)
   }
   else {
-    key = obj.K
-    if (!this._keyAsBuffer) key = key.toString()
+    key = obj[sql.fieldName('k')];
+    if ((sql.isUsingEncoding()) && (!this._keyAsBuffer)) key = key.toString()
 
-    value = obj.V
-    if (!this._valueAsBuffer) value = value.toString()
+    value = obj[sql.fieldName('v')];
+    if ((sql.isUsingEncoding()) && (!this._valueAsBuffer)) value = value.toString()
 
     callback(null, key, value)
   }
