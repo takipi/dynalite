@@ -231,7 +231,7 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
 }
 
 function insertHelper(db, cb, key, value, tableName) {
-    db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) " + sql.sqlForOnDuplicateKey(tableName + "_PK") + " V=?", [String(key), value, value], function(err) {
+    db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) " + sql.sqlForOnDuplicateKey(tableName + "_PK") + " V=?", [key, value, value], function(err) {
         if (err) {
             console.error(err)
         }
