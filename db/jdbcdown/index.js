@@ -67,7 +67,7 @@ JDBCdown.prototype._get = function(key, options, cb) {
     }
     key = util.encode(key);
 
-    this.pool.execute("SELECT V FROM " + this.tableName + " WHERE K = ?", [key], function(err, res, rows) {
+    this.pool.execute("SELECT V FROM " + this.tableName + " WHERE K = " + sql.castValueIfRequired('?'), [key], function(err, res, rows) {
         if (err) {
             console.error(err);
             return cb(new Error("Error occurred"));

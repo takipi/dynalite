@@ -1,5 +1,6 @@
 'use strict';
 
+var util = require('./encoding');
 var sqlFlavour;
 
 function setSqlFlavourByJdbcUrl(jdbcUrl)
@@ -43,22 +44,10 @@ function blobType()
 		case "mysql":
 			return "BLOB";
 		case "postgres":
-			return "TEXT";
+			return "BYTEA";
 		default:
 			return "";
 	}
-}
-
-function isUsingEncoding()
-{
-	switch (sqlFlavour) {
-		case "mysql":
-			return true;
-		case "postgres":
-			return false;
-		default:
-			return true;
-    }
 }
 
 function fieldName(name)
@@ -70,6 +59,18 @@ function fieldName(name)
 			return name.toLowerCase();
 		default:
 			return name;
+	}
+}
+
+function castValueIfRequired(value)
+{
+	switch (sqlFlavour) {
+		case "mysql":
+			return value;
+		case "postgres":
+			return "CAST(" + expression + " AS TEXT)";
+		default:
+			return value;
 	}
 }
 

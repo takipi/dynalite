@@ -226,7 +226,7 @@ Iterator.prototype.buildSQL = function () {
 
 function appendWhere(statement, condition, appendee)
 {
-  statement.sql += (condition + " ? AND ");
+  statement.sql += (condition + " " + sql.castValueIfRequired('?') + " AND ");
   statement.args.push(util.encode(appendee));
 }
 
