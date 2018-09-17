@@ -144,10 +144,10 @@ Iterator.prototype._next = function(callback) {
   }
   else {
     key = obj[sql.fieldName('k')];
-    if ((sql.isUsingEncoding()) && (!this._keyAsBuffer)) key = key.toString()
+    if (!this._keyAsBuffer) key = key.toString()
 
     value = obj[sql.fieldName('v')];
-    if ((sql.isUsingEncoding()) && (!this._valueAsBuffer)) value = value.toString()
+    if (!this._valueAsBuffer) value = value.toString()
 
     callback(null, key, value)
   }

@@ -68,7 +68,7 @@ function castValueIfRequired(value)
 		case "mysql":
 			return value;
 		case "postgres":
-			return "CAST(" + expression + " AS TEXT)";
+			return "CAST(" + value + " AS TEXT)";
 		default:
 			return value;
 	}
@@ -78,5 +78,5 @@ exports.setSqlFlavourByJdbcUrl = setSqlFlavourByJdbcUrl;
 exports.getDBEngineDefinition = getDBEngineDefinition;
 exports.sqlForOnDuplicateKey = sqlForOnDuplicateKey;
 exports.blobType = blobType;
-exports.isUsingEncoding = isUsingEncoding;
 exports.fieldName = fieldName;
+exports.castValueIfRequired = castValueIfRequired;

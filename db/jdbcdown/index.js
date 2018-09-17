@@ -240,7 +240,7 @@ function insertHelper(db, cb, key, value, tableName) {
 }
 
 function deleteHelper(db, cb, key, tableName) {
-    db.execute("DELETE FROM " + tableName + " where K=?", [key], function(err) {
+    db.execute("DELETE FROM " + tableName + " where K=" + sql.castValueIfRequired('?'), [key], function(err) {
         if (err) {
             console.error(err);
         }
