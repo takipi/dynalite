@@ -67,7 +67,7 @@ JDBCdown.prototype._get = function(key, options, cb) {
     }
     key = util.encode(key);
 
-    this.pool.execute("SELECT V FROM " + this.tableName + " WHERE K = ?", [key], function(err, res, rows) {
+    this.pool.execute("SELECT V FROM " + this.tableName + " WHERE K = " + sql.castValueIfRequired('?'), [key], function(err, res, rows) {
         if (err) {
             console.error(err);
             return cb(new Error("Error occurred"));
@@ -240,7 +240,7 @@ function insertHelper(db, cb, key, value, tableName) {
 }
 
 function deleteHelper(db, cb, key, tableName) {
-    db.execute("DELETE FROM " + tableName + " where K=?", [key], function(err) {
+    db.execute("DELETE FROM " + tableName + " where K=" + sql.castValueIfRequired('?'), [key], function(err) {
         if (err) {
             console.error(err);
         }

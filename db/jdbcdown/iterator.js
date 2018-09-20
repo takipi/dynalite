@@ -144,10 +144,10 @@ Iterator.prototype._next = function(callback) {
   }
   else {
     key = obj[sql.fieldName('k')];
-    if ((sql.isUsingEncoding()) && (!this._keyAsBuffer)) key = key.toString()
+    if (!this._keyAsBuffer) key = key.toString()
 
     value = obj[sql.fieldName('v')];
-    if ((sql.isUsingEncoding()) && (!this._valueAsBuffer)) value = value.toString()
+    if (!this._valueAsBuffer) value = value.toString()
 
     callback(null, key, value)
   }
@@ -226,7 +226,7 @@ Iterator.prototype.buildSQL = function () {
 
 function appendWhere(statement, condition, appendee)
 {
-  statement.sql += (condition + " ? AND ");
+  statement.sql += (condition + " " + sql.castValueIfRequired('?') + " AND ");
   statement.args.push(util.encode(appendee));
 }
 

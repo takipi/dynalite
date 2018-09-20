@@ -1,5 +1,6 @@
 'use strict';
 
+var util = require('./encoding');
 var sqlFlavour;
 
 function setSqlFlavourByJdbcUrl(jdbcUrl)
@@ -43,22 +44,10 @@ function blobType()
 		case "mysql":
 			return "BLOB";
 		case "postgres":
-			return "TEXT";
+			return "BYTEA";
 		default:
 			return "";
 	}
-}
-
-function isUsingEncoding()
-{
-	switch (sqlFlavour) {
-		case "mysql":
-			return true;
-		case "postgres":
-			return false;
-		default:
-			return true;
-    }
 }
 
 function fieldName(name)
@@ -73,9 +62,21 @@ function fieldName(name)
 	}
 }
 
+function castValueIfRequired(value)
+{
+	switch (sqlFlavour) {
+		case "mysql":
+			return value;
+		case "postgres":
+			return "CAST(" + value + " AS TEXT)";
+		default:
+			return value;
+	}
+}
+
 exports.setSqlFlavourByJdbcUrl = setSqlFlavourByJdbcUrl;
 exports.getDBEngineDefinition = getDBEngineDefinition;
 exports.sqlForOnDuplicateKey = sqlForOnDuplicateKey;
 exports.blobType = blobType;
-exports.isUsingEncoding = isUsingEncoding;
 exports.fieldName = fieldName;
+exports.castValueIfRequired = castValueIfRequired;
