@@ -213,7 +213,7 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
     var jdbcProps = {
         url: url,
         properties: vendorProperties,
-        minConnections: 0,
+        minConnections: '0', // a string because of int because jdbc-trireme has a bug
         maxConnections: connectionPoolMaxSize,
         idleTimeout: 600
     };
