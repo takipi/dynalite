@@ -213,7 +213,7 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
     var jdbcProps = {
         url: url,
         properties: vendorProperties,
-        minConnections: 0,
+        minConnections: '0',
         maxConnections: connectionPoolMaxSize,
         idleTimeout: 600
     };
