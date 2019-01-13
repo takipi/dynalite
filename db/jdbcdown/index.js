@@ -191,7 +191,6 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
     
     if (url.includes("jdbc:mysql")) {
         extraVendorProperties = {
-            useSSL: false,
             createDatabaseIfNotExist: true,
             connectTimeout: 15000,
             useLocalSessionState: true,
