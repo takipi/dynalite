@@ -240,7 +240,7 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 		return false;
 	}  
 	
-	db.execute(sql, params, function (err, result, rows) 
+	db.execute(sql, params, function(err, result, rows) 
 	{
 		if(!err)
 		{
@@ -249,12 +249,12 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 		
 		var commErr = "Communications link failure";
 		
-		if (err.toString().indexOf(commErr) >= 0) 
+		if (err.toString().indexOf(commErr) >= 0)
 		{
 			if((retriesCounter % 100) === 0)
 			{
 				console.error("SQL Communications link failure, " + ", retries count = " 
-				+ retriesCounter + ", sql = " + sql); 
+					+ retriesCounter + ", sql = " + sql); 
 			}
 
 			if (!executeSql(db, sql, params, retriesCounter + 1, cb)) {
@@ -266,6 +266,8 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 			cb(err);
 		}
 	});
+	
+	return true;
 }
 
 function beginTransactionSql(db, retriesCounter, cb) {
@@ -299,6 +301,5 @@ function beginTransactionSql(db, retriesCounter, cb) {
 		{
 			cb(err);
 		}
-
 	});
 }
