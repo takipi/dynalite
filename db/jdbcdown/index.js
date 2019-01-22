@@ -116,8 +116,8 @@ function unique(array) {
 JDBCdown.prototype._batch = function(array, options, callback) {
 	var self = this;
 	var inserts = 0;
-	
-	this.pool.beginTransaction(function(err, tran) {
+
+	beginTransactionSql(this.pool, 0, function(err, tran) {
 		if (err) {
 			console.error(err);
 		}
@@ -253,8 +253,8 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 		{
 			if((retriesCounter % 100) === 0)
 			{
-			   console.error("SQL Communications link failure, " + ", retries count = " 
-			   + retriesCounter + ", sql = " + sql); 
+				console.error("SQL Communications link failure, " + ", retries count = " 
+				+ retriesCounter + ", sql = " + sql); 
 			}
 
 			if (!executeSql(db, sql, params, retriesCounter + 1, cb)) {
@@ -265,5 +265,39 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 		{
 			cb(err);
 		}
+	});
+
+function beginTransactionSql(db, retriesCounter, cb) {
+	if (retriesCounter > 1000) {
+		console.error("Failed begin begin transaction");
+		return false;
+	}
+
+	db.beginTransaction(function(err, tran) 
+	{
+		if(!err)
+		{
+			return cb(err, tran); 
+		}
+
+		var commErr = "Communications link failure";
+		
+		if (err.toString().indexOf(commErr) >= 0) 
+		{
+			if((retriesCounter % 100) === 0)
+			{
+				console.error("Transaction Communications link failure, " + ", retries count = " 
+				+ retriesCounter); 
+			}
+
+			if (!beginTransactionSql(db, retriesCounter + 1, cb)) {
+				console.log(err);
+			}
+		}
+		else
+		{
+			cb(err);
+		}
+
 	});
 }
