@@ -29,8 +29,7 @@ JDBCdown.prototype._open = function(options, callback) {
         'K VARCHAR(767) NOT NULL, V ' + sql.blobType() + ', CONSTRAINT ' + this.tableName + '_PK PRIMARY KEY(K)) ' +
         sql.getDBEngineDefinition();
 
-    this.pool.execute(tableCreateStr,
-        function(err, result) {
+     executeSql(this.pool, tableCreateStr, undefined, 0, function(err, result) {
             if (err) {
                 console.error(err);
             }
@@ -67,7 +66,9 @@ JDBCdown.prototype._get = function(key, options, cb) {
     }
     key = util.encode(key);
 
-    this.pool.execute("SELECT V FROM " + this.tableName + " WHERE K = " + sql.castValueIfRequired('?'), [key], function(err, res, rows) {
+    var selectStr = "SELECT V FROM " + this.tableName + " WHERE K = " + sql.castValueIfRequired('?');
+
+    executeSql(this.pool, selectStr, [key], 0, function(err, res, rows) {
         if (err) {
             console.error(err);
             return cb(new Error("Error occurred"));
@@ -230,7 +231,10 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
 }
 
 function insertHelper(db, cb, key, value, tableName) {
-    db.execute("INSERT INTO " + tableName + " (K, V) VALUES (?,?) " + sql.sqlForOnDuplicateKey(tableName + "_PK") + " V=?", [key, value, value], function(err) {
+   
+    var insertStr = "INSERT INTO " + tableName + " (K, V) VALUES (?,?) " + sql.sqlForOnDuplicateKey(tableName + "_PK") + " V=?";
+    
+    executeSql(db, insertStr,  [key, value, value], 0, function(err) {
         if (err) {
             console.error(err)
         }
@@ -239,11 +243,46 @@ function insertHelper(db, cb, key, value, tableName) {
 }
 
 function deleteHelper(db, cb, key, tableName) {
-    db.execute("DELETE FROM " + tableName + " where K=" + sql.castValueIfRequired('?'), [key], function(err) {
+    var deleteStr =  "DELETE FROM " + tableName + " where K=" + sql.castValueIfRequired('?');
+    
+    executeSql(db, deleteStr, [key], 0, function(err) {
         if (err) {
             console.error(err);
         }
 
         cb();
     });
+}
+
+function executeSql(db, sql, params, retriesCounter , cb) {
+    if (retriesCounter > 1000) {
+        console.error("Failed to execute sql = " + sql);
+    }  
+    else
+    {
+        db.execute(sql, params, function (err, result, rows) {
+            if(err)
+            {
+                var commErr = "Communications link failure";
+                if (err.toString().indexOf(commErr) >= 0) 
+                {
+                    if((retriesCounter % 100) === 0)
+                    {
+                       console.error("SQL Communications link failure, " + ", retries count = " 
+                       + retriesCounter + ", sql = " + sql); 
+                    }
+
+                    executeSql(db, sql, params, retriesCounter + 1, cb);
+                }
+                else
+                {
+                    cb(err);
+                }
+            }
+            else
+            {
+                cb(err, result, rows);
+            }
+        });
+    }
 }
