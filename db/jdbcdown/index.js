@@ -266,6 +266,7 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 			cb(err);
 		}
 	});
+}
 
 function beginTransactionSql(db, retriesCounter, cb) {
 	if (retriesCounter > 1000) {
