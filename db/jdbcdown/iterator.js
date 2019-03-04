@@ -157,11 +157,11 @@ Iterator.prototype._end = function(callback) {
   callback()
 }
 
-Iterator.prototype.buildSQL = function () {
+Iterator.prototype.buildSQL = function() {
   var self = this;
-  var sql = "select K, V from " + this.tableName + " where ";
+  var sqlStr = "select K, V from " + this.tableName + " where ";
   var args = [];
-  var statement = {sql: sql, args: args};
+  var statement = {sql: sqlStr, args: args};
 
   if (this._order) {
     if ('start' in this._options) {
@@ -218,7 +218,7 @@ Iterator.prototype.buildSQL = function () {
   }
 
   if (this._limit > 0) {
-    statement.sql = statement.sql + " limit " + this._limit;
+    statement.sql = statement.sql + " " + sql.limit(this._limit);
   }
 
   return statement;

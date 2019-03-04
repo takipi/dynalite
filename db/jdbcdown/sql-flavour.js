@@ -6,10 +6,11 @@ var sqlFlavour;
 function setSqlFlavourByJdbcUrl(jdbcUrl)
 {
 	if ((jdbcUrl.startsWith("jdbc:h2")) ||
-		(jdbcUrl.startsWith("jdbc:mysql"))) {
+		  (jdbcUrl.startsWith("jdbc:mysql"))) {
 		sqlFlavour = "mysql";
-	}
-	else {
+	} else if (jdbcUrl.startsWith("jdbc:oracle")) {
+		sqlFlavour = "oracle";
+	} else {
 		sqlFlavour = "postgres";
 	}
 }
@@ -24,6 +25,22 @@ function getDBEngineDefinition()
 		default:
 			return '';
     }
+}
+
+function sqlHasSupportForUpsertWithOnDup()
+{
+	switch (sqlFlavour) {
+		case "oracle": return false;
+		default: return true;
+	}
+}
+
+function sqlIfNotExists()
+{
+	switch (sqlFlavour) {
+		case "oracle": return "";
+		default: return "IF NOT EXISTS";
+	}
 }
 
 function sqlForOnDuplicateKey(constraintName)
@@ -45,6 +62,8 @@ function blobType()
 			return "BLOB";
 		case "postgres":
 			return "BYTEA";
+		case "oracle":
+			return "BLOB";
 		default:
 			return "";
 	}
@@ -54,6 +73,7 @@ function fieldName(name)
 {
 	switch (sqlFlavour) {
 		case "mysql":
+		case "oracle":
 			return name.toUpperCase();
 		case "postgres":
 			return name.toLowerCase();
@@ -74,9 +94,25 @@ function castValueIfRequired(value)
 	}
 }
 
+function limit(value)
+{
+	switch (sqlFlavour) {
+		case "oracle":
+			return "FETCH FIRST " + value + " ROWS ONLY";
+		case "mysql":
+		case "postgres":
+			return "limit " + value;
+		default:
+			return value;
+	}
+}
+
 exports.setSqlFlavourByJdbcUrl = setSqlFlavourByJdbcUrl;
 exports.getDBEngineDefinition = getDBEngineDefinition;
 exports.sqlForOnDuplicateKey = sqlForOnDuplicateKey;
 exports.blobType = blobType;
 exports.fieldName = fieldName;
 exports.castValueIfRequired = castValueIfRequired;
+exports.sqlHasSupportForUpsertWithOnDup = sqlHasSupportForUpsertWithOnDup;
+exports.sqlIfNotExists = sqlIfNotExists;
+exports.limit = limit;

@@ -13,6 +13,8 @@ var http = require('http'),
 		dynaliteLogger = require('./logger'),
 		stats = require('./stats');
 
+require('es6-promise').polyfill();
+
 var MAX_REQUEST_BYTES = 16 * 1024 * 1024
 var logger
 var statistics
