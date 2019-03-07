@@ -8,10 +8,10 @@ function setSqlFlavourByJdbcUrl(jdbcUrl)
 	if ((jdbcUrl.startsWith("jdbc:h2")) ||
 		  (jdbcUrl.startsWith("jdbc:mysql"))) {
 		sqlFlavour = "mysql";
-	} else if (jdbcUrl.startsWith("jdbc:oracle")) {
-		sqlFlavour = "oracle";
-	} else {
+	} else if (jdbcUrl.startsWith("jdbc:postgres")) {
 		sqlFlavour = "postgres";
+	} else {
+		sqlFlavour = "oracle";
 	}
 }
 

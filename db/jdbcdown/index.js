@@ -198,7 +198,17 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
 	else if (url.includes("jdbc:oracle")) {
 		extraVendorProperties = {
 			connectTimeout: 15000,
-			autoReconnect: true
+			autoReconnect: true,
+			testWhileIdle: true,
+      testOnBorrow: true,
+      testOnReturn: false,
+			validationQuery: "SELECT 1 FROM DUAL",
+      validationInterval: 30000,
+			defaultAutoCommit: true,
+			poolPreparedStatements: true,
+			removeAbandoned: true,
+			logAbandoned: true,
+			_optim_peek_user_binds: false
 		}
 	}
 	
