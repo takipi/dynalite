@@ -200,10 +200,10 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
 			connectTimeout: 15000,
 			autoReconnect: true,
 			testWhileIdle: true,
-      testOnBorrow: true,
-      testOnReturn: false,
+			testOnBorrow: true,
+			testOnReturn: false,
 			validationQuery: "SELECT 1 FROM DUAL",
-      validationInterval: 30000,
+			validationInterval: 30000,
 			defaultAutoCommit: true,
 			poolPreparedStatements: true,
 			removeAbandoned: true,
@@ -279,12 +279,12 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 			return cb(err, result, rows); 
 		}
 		
-    var oracleAlreadyExistsErr = "ORA-00955";
-    
-    if (err.toString().indexOf(oracleAlreadyExistsErr) >= 0)
-    {
-      return cb(0, {}, {});
-    }
+		var oracleAlreadyExistsErr = "ORA-00955";
+		
+		if (err.toString().indexOf(oracleAlreadyExistsErr) >= 0)
+		{
+		  return cb(0, {}, {});
+		}
     
 		var commErr = "Communications link failure";
 		
