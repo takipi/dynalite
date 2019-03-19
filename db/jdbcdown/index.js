@@ -264,7 +264,7 @@ function deleteHelper(db, cb, key, tableName) {
 }
 
 function executeSql(db, sql, params, retriesCounter, cb) {
-  console.log('executeSql ' + sql);
+  // console.log('executeSql ' + sql);
   
 	if (retriesCounter > 1000) {
 		console.error("Failed to execute sql = " + sql);
@@ -302,6 +302,7 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 		}
 		else
 		{
+			console.error("Error: " + err + ". Sql: " + sql);
 			cb(err);
 		}
 	});
