@@ -7,7 +7,9 @@ repositories {
 
 dependencies {
 	compile "mysql:mysql-connector-java:5.1.6"
-	compile "com.github.noraui:ojdbc8:12.2.0.1"
+	files([
+			"../../libs/oracle/ojdbc8.jar"
+	])
 }
 
 distributions {
