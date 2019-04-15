@@ -98,7 +98,7 @@ function limit(statement, value)
 {
 	switch (sqlFlavour) {
 		case "oracle":
-			return "SELECT * FROM (" + statement + ") WHERE ROWNUM < " + value;
+			return "SELECT * FROM (" + statement + ") WHERE ROWNUM <= " + value;
 		case "mysql":
 		case "postgres":
 			return statement + " limit " + value;
