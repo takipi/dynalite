@@ -218,7 +218,7 @@ Iterator.prototype.buildSQL = function() {
   }
 
   if (this._limit > 0) {
-    statement.sql = statement.sql + " " + sql.limit(this._limit);
+    statement.sql = sql.limit(statement.sql, this._limit);
   }
 
   return statement;

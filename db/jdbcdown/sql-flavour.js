@@ -94,16 +94,16 @@ function castValueIfRequired(value)
 	}
 }
 
-function limit(value)
+function limit(statement, value)
 {
 	switch (sqlFlavour) {
 		case "oracle":
-			return "FETCH FIRST " + value + " ROWS ONLY";
+			return "SELECT * FROM (" + statement + ") WHERE ROWNUM < " + value;
 		case "mysql":
 		case "postgres":
-			return "limit " + value;
+			return statement + " limit " + value;
 		default:
-			return value;
+			return statement + " " + value;
 	}
 }
 
