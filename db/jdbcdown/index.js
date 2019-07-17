@@ -264,11 +264,8 @@ function deleteHelper(db, cb, key, tableName) {
 }
 
 function executeSql(db, sql, params, retriesCounter, cb) {
-  // console.log('executeSql ' + sql);
-  
 	if (retriesCounter > 1000) {
 		console.error("Failed to execute sql = " + sql);
-    
 		return false;
 	}  
 	
@@ -283,9 +280,9 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 		
 		if (err.toString().indexOf(oracleAlreadyExistsErr) >= 0)
 		{
-		  return cb(0, {}, {});
+		  return cb(null, result, rows);
 		}
-    
+		
 		var commErr = "Communications link failure";
 		
 		if (err.toString().indexOf(commErr) >= 0)
@@ -323,13 +320,13 @@ function beginTransactionSql(db, retriesCounter, cb) {
 			return cb(err, tran); 
 		}
 
-    var oracleAlreadyExistsErr = "ORA-00955";
-    
-    if (err.toString().indexOf(oracleAlreadyExistsErr) >= 0)
-    {
-      return cb(0, tran);
-    }
-    
+		var oracleAlreadyExistsErr = "ORA-00955";
+
+		if (err.toString().indexOf(oracleAlreadyExistsErr) >= 0)
+		{
+			return cb(null, tran);
+		}
+
 		var commErr = "Communications link failure";
 		
 		if (err.toString().indexOf(commErr) >= 0) 
