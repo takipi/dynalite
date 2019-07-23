@@ -28,6 +28,7 @@
     "bluebird": "^3.5.1",
     "buffer-crc32": "^0.2.13",
     "dateformat": "^3.0.2",
+    "es6-promise": "^4.2.5",
     "http-proxy": "^1.17.0",
     "inherits": "^2.0.3",
     "lazy": "^1.0.11",

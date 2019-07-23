@@ -7,6 +7,9 @@ repositories {
 
 dependencies {
 	compile "mysql:mysql-connector-java:5.1.6"
+	compile files([
+			"libs/ojdbc8.jar"
+	])
 }
 
 distributions {

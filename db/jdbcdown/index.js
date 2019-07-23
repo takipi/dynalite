@@ -25,7 +25,7 @@ function JDBCdown(jdbcUrl, jdbcUser, jdbcPassword, tableName, dbPerTable, connec
 }
 
 JDBCdown.prototype._open = function(options, callback) {
-	var tableCreateStr = 'CREATE TABLE IF NOT EXISTS ' + this.tableName + '(' +
+	var tableCreateStr = 'CREATE TABLE ' + sql.sqlIfNotExists() + " " + this.tableName + '(' +
 		'K VARCHAR(767) NOT NULL, V ' + sql.blobType() + ', CONSTRAINT ' + this.tableName + '_PK PRIMARY KEY(K)) ' +
 		sql.getDBEngineDefinition();
 
@@ -47,7 +47,6 @@ JDBCdown.destroy = function(location, options, callback) {
 	//         callback();
 	//     });
 };
-
 
 JDBCdown.prototype._get = function(key, options, cb) {
 	var self = this;
@@ -170,7 +169,7 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
 	
 	var pool = poolMap[keyStore];
 	
-	if(pool)
+	if (pool)
 	{
 		return pool;
 	}
@@ -194,6 +193,22 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
 			prepStmtCacheSqlLimit: 2048,
 			rewriteBatchedStatements: true,
 			autoReconnect: true
+		}
+	}
+	else if (url.includes("jdbc:oracle")) {
+		extraVendorProperties = {
+			connectTimeout: 15000,
+			autoReconnect: true,
+			testWhileIdle: true,
+			testOnBorrow: true,
+			testOnReturn: false,
+			validationQuery: "SELECT 1 FROM DUAL",
+			validationInterval: 30000,
+			defaultAutoCommit: true,
+			poolPreparedStatements: true,
+			removeAbandoned: true,
+			logAbandoned: true,
+			_optim_peek_user_binds: false
 		}
 	}
 	
@@ -223,9 +238,23 @@ function initPool(url, user, password, tableName, dbPerTable, connectionPoolMaxS
 }
 
 function insertHelper(db, cb, key, value, tableName) {
-	var insertStr = "INSERT INTO " + tableName + " (K, V) VALUES (?,?) " + sql.sqlForOnDuplicateKey(tableName + "_PK") + " V=?";
-	
-	executeSql(db, insertStr, [key, value, value], 0, cb);
+    if (sql.sqlHasSupportForUpsertWithOnDup()) {
+        var insertStr = "INSERT INTO " + tableName + " (K, V) VALUES (?,?) " + sql.sqlForOnDuplicateKey(tableName + "_PK") + " V=?";
+        executeSql(db, insertStr, [key, value, value], 0, cb);
+    } else {
+        // Upsert with MERGE for Oracle
+        var mergeStr =
+          "MERGE INTO " + tableName + " o \n" +
+          "USING (SELECT * FROM DUAL) i\n" +
+          "ON (? = o.K)\n" +
+          "WHEN MATCHED THEN\n" +
+          "  UPDATE SET o.V = ?\n" +
+          "WHEN NOT MATCHED THEN\n" +
+          "  INSERT (K, V)\n" +
+          "  VALUES(?, ?)\n";
+        
+        executeSql(db, mergeStr, [key, value, key, value], 0, cb);
+    }
 }
 
 function deleteHelper(db, cb, key, tableName) {
@@ -242,9 +271,16 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 	
 	db.execute(sql, params, function(err, result, rows) 
 	{
-		if(!err)
+		if (!err)
 		{
 			return cb(err, result, rows); 
+		}
+		
+		var oracleAlreadyExistsErr = "ORA-00955";
+		
+		if (err.toString().indexOf(oracleAlreadyExistsErr) >= 0)
+		{
+		  return cb(null, result, rows);
 		}
 		
 		var commErr = "Communications link failure";
@@ -263,6 +299,7 @@ function executeSql(db, sql, params, retriesCounter, cb) {
 		}
 		else
 		{
+			console.error("Error: " + err + ". Sql: " + sql);
 			cb(err);
 		}
 	});
@@ -281,6 +318,13 @@ function beginTransactionSql(db, retriesCounter, cb) {
 		if(!err)
 		{
 			return cb(err, tran); 
+		}
+
+		var oracleAlreadyExistsErr = "ORA-00955";
+
+		if (err.toString().indexOf(oracleAlreadyExistsErr) >= 0)
+		{
+			return cb(null, tran);
 		}
 
 		var commErr = "Communications link failure";
