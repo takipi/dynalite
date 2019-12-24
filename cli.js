@@ -14,6 +14,7 @@ if (argv.help) {
     '--help                Display this help message and exit',
     '--port <port>         The port to listen on (default: 4567)',
     '--path <path>         The path to use for the LevelDB store (in-memory by default)',
+    '--logFileName         The file name of the log',
     '--ssl                 Enable SSL for the web server (default: false)',
     '--createTableMs <ms>  Amount of time tables stay in CREATING state (default: 500)',
     '--deleteTableMs <ms>  Amount of time tables stay in DELETING state (default: 500)',
